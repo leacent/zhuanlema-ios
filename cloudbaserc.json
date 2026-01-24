@@ -1,0 +1,55 @@
+{
+  "envId": "prod-1-3g3ukjzod3d5e3a1",
+  "version": "2.0",
+  "functionRoot": "./cloudfunctions",
+  "functions": [
+    {
+      "name": "getTodayCheckInStats",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getPosts",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "createPost",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "createCheckIn",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    }
+  ],
+  "databases": {
+    "collections": [
+      {
+        "name": "users",
+        "aclTag": "PRIVATE",
+        "description": "用户信息表"
+      },
+      {
+        "name": "check_ins",
+        "aclTag": "PRIVATE",
+        "description": "打卡记录表"
+      },
+      {
+        "name": "posts",
+        "aclTag": "READONLY",
+        "description": "帖子表"
+      },
+      {
+        "name": "sms_codes",
+        "aclTag": "ADMINONLY",
+        "description": "验证码表"
+      }
+    ]
+  }
+}

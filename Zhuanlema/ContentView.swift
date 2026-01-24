@@ -7,15 +7,13 @@
 
 import SwiftUI
 
+/**
+ * 内容视图（已废弃）
+ * 实际入口在 ZhuanlemaApp.swift
+ */
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        MainTabView()
     }
 }
 

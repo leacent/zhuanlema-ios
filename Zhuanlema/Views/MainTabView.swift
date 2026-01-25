@@ -1,6 +1,6 @@
 /**
  * 主导航视图
- * 底部 TabBar 导航 - 社区（首页）+ 我的
+ * 底部 TabBar 导航 - 社区（首页）+ 行情 + 我的
  */
 import SwiftUI
 
@@ -19,14 +19,23 @@ struct MainTabView: View {
                 }
                 .tag(0)
             
+            // 行情
+            MarketView()
+                .environmentObject(appState)
+                .tabItem {
+                    Image(systemName: selectedTab == 1 ? "chart.line.uptrend.xyaxis.circle.fill" : "chart.line.uptrend.xyaxis.circle")
+                    Text("行情")
+                }
+                .tag(1)
+            
             // 我的
             ProfileView()
                 .environmentObject(appState)
                 .tabItem {
-                    Image(systemName: selectedTab == 1 ? "person.fill" : "person")
+                    Image(systemName: selectedTab == 2 ? "person.fill" : "person")
                     Text("我的")
                 }
-                .tag(1)
+                .tag(2)
         }
         .accentColor(Color(uiColor: ColorPalette.brandPrimary))
     }

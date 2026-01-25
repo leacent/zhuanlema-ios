@@ -35,9 +35,10 @@ struct ZhuanlemaApp: App {
     
     /// 设置通知监听
     private func setupNotifications() {
-        // 监听登录成功事件
+        // 监听登录成功事件：刷新登录态并将本地打卡同步到云端（与 user 绑定）
         NotificationCenter.default.addObserver(forName: .userDidLogin, object: nil, queue: .main) { _ in
             appState.checkLoginStatus()
+            appState.syncLocalCheckInsAfterLogin()
         }
         // 监听登出事件
         NotificationCenter.default.addObserver(forName: .userDidLogout, object: nil, queue: .main) { _ in
@@ -68,6 +69,11 @@ class AppState: ObservableObject {
     
     func checkLoginStatus() {
         isLoggedIn = userRepository.isLoggedIn()
+    }
+
+    /// 登录成功后将本地打卡记录同步到数据库并与当前用户绑定
+    func syncLocalCheckInsAfterLogin() {
+        Task { await checkInRepository.syncLocalCheckInsToCloud() }
     }
     
     func checkTodayCheckInStatus() {

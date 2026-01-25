@@ -185,24 +185,20 @@ struct DailyCheckInView: View {
         Task {
             do {
                 _ = try await checkInRepository.submitCheckIn(result: result)
-                
-                // 标记已打卡（虽然用户说没有时间定义，但我们仍需通过此标志进入主界面）
                 checkInRepository.markCheckedInToday()
-                
-                // 给予动效展示时间
-                try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s
-                
-                await MainActor.run {
-                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                        appState.hasCheckedInToday = true
-                    }
-                }
             } catch {
-                await MainActor.run {
-                    isSubmitting = false
-                    print("打卡记录失败: \(error.localizedDescription)")
-                    // 即使失败，为了用户体验，也可以考虑是否强制进入
+                // 云端失败时仍保存到本地并标记已打卡，保证用户能进入首页
+                checkInRepository.saveCheckInLocallyOnly(result: result)
+                checkInRepository.markCheckedInToday()
+                print("打卡记录失败(已落本地): \(error.localizedDescription)")
+            }
+            // 给予动效展示时间后一律进入首页
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await MainActor.run {
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    appState.hasCheckedInToday = true
                 }
+                isSubmitting = false
             }
         }
     }

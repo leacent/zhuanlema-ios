@@ -37,4 +37,28 @@ struct User: Codable, Identifiable {
             self.createdAt = Date()
         }
     }
+
+    /// 从 getProfile 接口返回数据转换
+    init(id: String, phoneNumber: String?, nickname: String, avatar: String, createdAt: Date) {
+        self.id = id
+        self.phoneNumber = phoneNumber
+        self.nickname = nickname
+        self.avatar = avatar
+        self.createdAt = createdAt
+    }
+}
+
+/// getProfile 云函数返回的 data 结构
+struct GetProfileData: Codable {
+    let _id: String
+    let nickname: String
+    let avatar: String
+    let phone_number: String?
+    let created_at: Double?
+
+    func toUser() -> User {
+        let created = created_at.map { Date(timeIntervalSince1970: $0) } ?? Date()
+        let phone = phone_number?.replacingOccurrences(of: "+86 ", with: "")
+        return User(id: _id, phoneNumber: phone, nickname: nickname, avatar: avatar, createdAt: created)
+    }
 }

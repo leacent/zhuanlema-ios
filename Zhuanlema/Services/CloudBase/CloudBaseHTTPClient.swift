@@ -34,20 +34,30 @@ enum CloudBaseHTTPClient {
 
         if statusCode != 200 {
             print("❌ [CloudBaseHTTP] \(name) HTTP \(statusCode) body=\(responseBody.prefix(400))")
+            
+            var errorMessage = "请求失败 (HTTP \(statusCode))"
+            
             // 解析错误信息
-            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let code = errorJson["code"] as? String,
-               let message = errorJson["message"] as? String {
-                throw NSError(
-                    domain: "CloudBaseHTTPClient",
-                    code: statusCode,
-                    userInfo: [NSLocalizedDescriptionKey: "\(code): \(message)"]
-                )
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let code = errorJson["code"] as? String,
+                   let message = errorJson["message"] as? String {
+                    errorMessage = "\(code): \(message)"
+                } else if let message = errorJson["message"] as? String {
+                    errorMessage = message
+                }
             }
+            
+            // 针对 403 的特殊处理
+            if statusCode == 403 {
+                if responseBody.contains("ACTION_FORBIDDEN") {
+                    errorMessage = "权限不足 (ACTION_FORBIDDEN)。请检查 API Key 配置或云函数 HTTP 访问权限。"
+                }
+            }
+
             throw NSError(
                 domain: "CloudBaseHTTPClient",
                 code: statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "请求失败 (HTTP \(statusCode))"]
+                userInfo: [NSLocalizedDescriptionKey: errorMessage]
             )
         }
 
@@ -82,6 +92,55 @@ enum CloudBaseHTTPClient {
         }
 
         print("❌ [CloudBaseHTTP] \(name) 解析失败 raw=\(responseBody.prefix(300))")
+        throw NSError(domain: "CloudBaseHTTPClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "响应解析失败"])
+    }
+
+    /// 使用 Publishable Key 鉴权 + body 内传 access_token 调用云函数（需登录接口，避免网关对用户 Token 返回 403）
+    static func callWithUserTokenInBody<T: Codable>(name: String, body: [String: Any], accessToken: String, dateDecodingStrategy: JSONDecoder.DateDecodingStrategy = .secondsSince1970) async throws -> T {
+        let url = CloudBaseConfig.functionURL(name: name)
+        var request = URLRequest(url: url)
+        try CloudBaseConfig.configureRequestWithUserTokenInBody(&request, body: body, accessToken: accessToken)
+
+        print("🔄 [CloudBaseHTTP] 调用云函数(用户 Token 在 body): \(name)")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = response as? HTTPURLResponse
+        let statusCode = httpResponse?.statusCode ?? -1
+        let responseBody = String(data: data, encoding: .utf8) ?? ""
+
+        if statusCode != 200 {
+            print("❌ [CloudBaseHTTP] \(name) HTTP \(statusCode) body=\(responseBody.prefix(400))")
+            var errorMessage = "请求失败 (HTTP \(statusCode))"
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let code = errorJson["code"] as? String,
+                   let message = errorJson["message"] as? String {
+                    errorMessage = "\(code): \(message)"
+                } else if let message = errorJson["message"] as? String {
+                    errorMessage = message
+                }
+            }
+            if statusCode == 403, responseBody.contains("ACTION_FORBIDDEN") {
+                errorMessage = "权限不足 (ACTION_FORBIDDEN)，请检查 API Key 或控制台策略；若为登录后操作可尝试重新登录。"
+            }
+            throw NSError(domain: "CloudBaseHTTPClient", code: statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = dateDecodingStrategy
+        do {
+            let wrapper = try decoder.decode(GatewayResponse<T>.self, from: data)
+            if let r = wrapper.result { return r }
+        } catch {}
+        if let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let resultVal = raw["result"] {
+            if let obj = resultVal as? [String: Any],
+               let json = try? JSONSerialization.data(withJSONObject: obj),
+               let r = try? decoder.decode(T.self, from: json) { return r }
+            if let str = resultVal as? String,
+               let json = str.data(using: .utf8),
+               let r = try? decoder.decode(T.self, from: json) { return r }
+        }
+        if let direct = try? decoder.decode(T.self, from: data) { return direct }
         throw NSError(domain: "CloudBaseHTTPClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "响应解析失败"])
     }
 }

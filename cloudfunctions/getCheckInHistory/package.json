@@ -1,0 +1,9 @@
+{
+  "name": "getCheckInHistory",
+  "version": "1.0.0",
+  "description": "Get current user check-in history for a month",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

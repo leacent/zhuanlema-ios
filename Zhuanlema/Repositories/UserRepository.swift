@@ -6,6 +6,7 @@ import Foundation
 
 class UserRepository {
     private let authService = CloudBaseAuthService.shared
+    private let databaseService = CloudBaseDatabaseService.shared
     
     // MARK: - 短信验证码登录
     
@@ -34,15 +35,25 @@ class UserRepository {
             verificationCode: verificationCode
         )
         
-        // 转换为 User 模型
-        let user = User(from: result.user)
-        
-        // 保存用户信息和 token 到本地
+        // 保存 token，先写入 auth 用户以便立即可用
         UserDefaults.standard.set(result.accessToken, forKey: "userAccessToken")
+        var user = User(from: result.user)
         if let userData = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(userData, forKey: "currentUser")
         }
-        
+        // 拉取后台资料（新用户会创建 users 文档）；用本次登录的手机号写入 users 表（Auth 返回的 user 可能不含 phone_number）
+        let phoneForSync = phoneNumber.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "+86", with: "").trimmingCharacters(in: .whitespaces)
+        if let refreshed = try? await databaseService.getProfile(accessToken: result.accessToken, phoneNumberForNewUser: phoneForSync.isEmpty ? nil : phoneForSync) {
+            user = refreshed
+            if let userData = try? JSONEncoder().encode(user) {
+                UserDefaults.standard.set(userData, forKey: "currentUser")
+            }
+            // 老用户补写手机号：若后台资料无 phone_number 且本地有手机号，调用 updateProfile 补写
+            let existingPhone = (refreshed.phoneNumber ?? "").trimmingCharacters(in: .whitespaces)
+            if existingPhone.isEmpty && !phoneForSync.isEmpty {
+                try? await databaseService.updateProfile(nickname: nil, avatar: nil, phoneNumber: phoneForSync, accessToken: result.accessToken)
+            }
+        }
         return (user, result.accessToken)
     }
     
@@ -79,14 +90,15 @@ class UserRepository {
     func signInWithWeChat(providerToken: String) async throws -> (user: User, accessToken: String) {
         do {
             let result = try await authService.signInWithWeChat(providerToken: providerToken)
-            let user = User(from: result.user)
-            
-            // 保存用户信息和 token 到本地
             UserDefaults.standard.set(result.accessToken, forKey: "userAccessToken")
+            var user = User(from: result.user)
             if let userData = try? JSONEncoder().encode(user) {
                 UserDefaults.standard.set(userData, forKey: "currentUser")
             }
-            
+            // 拉取后台资料（新用户会拿到随机头像和昵称）并更新本地
+            if let refreshed = try? await refreshProfile() {
+                user = refreshed
+            }
             return (user, result.accessToken)
         } catch CloudBaseAuthError.userNotFound {
             // 用户不存在，需要先注册
@@ -144,9 +156,80 @@ class UserRepository {
     func isLoggedIn() -> Bool {
         return getCurrentAccessToken() != nil && getCurrentUser() != nil
     }
+    
+    // MARK: - 资料拉取与更新（云函数 getProfile / updateProfile / uploadAvatar）
+    
+    /**
+     * 更新资料（昵称、头像）并刷新本地缓存
+     * 若 token 过期会清除本地登录态并抛出 sessionExpired
+     */
+    func updateProfile(nickname: String?, avatar: String?) async throws {
+        guard let token = getCurrentAccessToken() else {
+            throw UserRepositoryError.notLoggedIn
+        }
+        do {
+            try await databaseService.updateProfile(nickname: nickname, avatar: avatar, accessToken: token)
+            let user = try await databaseService.getProfile(accessToken: token)
+            if let userData = try? JSONEncoder().encode(user) {
+                UserDefaults.standard.set(userData, forKey: "currentUser")
+            }
+        } catch {
+            if isTokenExpiredError(error) {
+                logout()
+                NotificationCenter.default.post(name: .userDidLogout, object: nil)
+                throw UserRepositoryError.sessionExpired
+            }
+            throw error
+        }
+    }
+
+    /**
+     * 从后台拉取最新资料并更新本地
+     * 若 token 过期会清除登录态并抛出 sessionExpired
+     */
+    func refreshProfile() async throws -> User {
+        guard let token = getCurrentAccessToken() else {
+            throw UserRepositoryError.notLoggedIn
+        }
+        do {
+            let user = try await databaseService.getProfile(accessToken: token)
+            if let userData = try? JSONEncoder().encode(user) {
+                UserDefaults.standard.set(userData, forKey: "currentUser")
+            }
+            return user
+        } catch {
+            if isTokenExpiredError(error) {
+                logout()
+                NotificationCenter.default.post(name: .userDidLogout, object: nil)
+                throw UserRepositoryError.sessionExpired
+            }
+            throw error
+        }
+    }
+
+    /// 判断是否为 token 过期类错误（含 access token expire / 401 等）
+    private func isTokenExpiredError(_ error: Error) -> Bool {
+        let msg = error.localizedDescription.lowercased()
+        if msg.contains("expire") || msg.contains("token") && msg.contains("invalid") {
+            return true
+        }
+        let nserror = error as NSError
+        return nserror.domain == "CloudBaseHTTPClient" && nserror.code == 401
+    }
 }
 
 /// 用户仓库错误
-enum UserRepositoryError: Error {
+enum UserRepositoryError: LocalizedError {
     case userNotFound
+    case notLoggedIn
+    /// 访问令牌已过期，需重新登录
+    case sessionExpired
+
+    var errorDescription: String? {
+        switch self {
+        case .userNotFound: return "用户不存在"
+        case .notLoggedIn: return "请先登录"
+        case .sessionExpired: return "登录已过期，请重新登录"
+        }
+    }
 }

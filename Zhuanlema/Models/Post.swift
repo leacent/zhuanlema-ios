@@ -19,11 +19,16 @@ struct Post: Codable, Identifiable {
     var tags: [String]
     /// 点赞数
     var likeCount: Int
+    /// 评论数
+    var commentCount: Int
     /// 发布时间
     let createdAt: Double
     
     /// 用户信息（扩展字段，不存储在数据库）
     var user: User?
+    
+    /// 当前用户是否已点赞（扩展字段，不存储在数据库）
+    var isLiked: Bool = false
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -33,12 +38,27 @@ struct Post: Codable, Identifiable {
         case images
         case tags
         case likeCount
+        case commentCount
         case createdAt
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        userId = try container.decode(String.self, forKey: .userId)
+        content = try container.decode(String.self, forKey: .content)
+        nickname = try container.decodeIfPresent(String.self, forKey: .nickname)
+        images = try container.decodeIfPresent([String].self, forKey: .images) ?? []
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        likeCount = try container.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
+        commentCount = try container.decodeIfPresent(Int.self, forKey: .commentCount) ?? 0
+        createdAt = try container.decode(Double.self, forKey: .createdAt)
     }
 }
 
 extension Post {
-    var createdAtDate: Date {
+    /// 格式化的创建时间
+    var createdAtDate: Date? {
         return Date(timeIntervalSince1970: createdAt / 1000)
     }
 }

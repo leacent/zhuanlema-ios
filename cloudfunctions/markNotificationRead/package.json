@@ -1,0 +1,14 @@
+{
+  "name": "markNotificationRead",
+  "version": "1.0.0",
+  "description": "Mark a notification as read",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

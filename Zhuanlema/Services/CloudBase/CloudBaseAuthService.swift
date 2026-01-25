@@ -128,29 +128,81 @@ class CloudBaseAuthService {
         
         if signInStatusCode != 200 {
             let errorBody = String(data: signInData, encoding: .utf8) ?? ""
+            // User not exist (404) → auto register then continue
+            if signInStatusCode == 404, isUserNotExistError(signInData) {
+                print("🔄 [CloudBaseAuth] 用户不存在，自动注册...")
+                return try await signUpWithSMS(
+                    verificationToken: verifyResult.verification_token,
+                    phoneNumber: formattedPhone
+                )
+            }
             print("❌ [CloudBaseAuth] 登录失败 HTTP \(signInStatusCode): \(errorBody)")
             throw NSError(domain: "CloudBaseAuthService", code: signInStatusCode, userInfo: [NSLocalizedDescriptionKey: "登录失败"])
         }
         
-        // 打印原始响应以便调试
-        let responseString = String(data: signInData, encoding: .utf8) ?? ""
-        print("📋 [CloudBaseAuth] 登录响应原始数据: \(responseString)")
+        return try parseSignInResponse(signInData, formattedPhone: formattedPhone, logPrefix: "登录")
+    }
+    
+    /// 判断错误响应是否为「用户不存在」
+    private func isUserNotExistError(_ data: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        let error = (json["error"] as? String) ?? ""
+        let code = json["error_code"] as? Int
+        let desc = (json["error_description"] as? String) ?? ""
+        return error == "not_found" || code == 5 || desc.contains("User not exist")
+    }
+    
+    /**
+     * 短信验证码注册（新用户）
+     * POST /auth/v1/signup
+     */
+    private func signUpWithSMS(verificationToken: String, phoneNumber: String) async throws -> (user: CloudBaseUser, accessToken: String) {
+        let url = URL(string: "\(CloudBaseConfig.baseURL)/auth/v1/signup")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(CloudBaseConfig.publishableKey)", forHTTPHeaderField: "Authorization")
         
-        let signInDecoder = JSONDecoder()
+        let body: [String: Any] = [
+            "verification_token": verificationToken,
+            "phone_number": phoneNumber
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        print("🔄 [CloudBaseAuth] 执行注册...")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let httpResponse = response as? HTTPURLResponse
+        let statusCode = httpResponse?.statusCode ?? -1
+        
+        guard statusCode == 200 else {
+            let errorBody = String(data: data, encoding: .utf8) ?? ""
+            print("❌ [CloudBaseAuth] 注册失败 HTTP \(statusCode): \(errorBody)")
+            throw NSError(domain: "CloudBaseAuthService", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "注册失败"])
+        }
+        
+        let responseString = String(data: data, encoding: .utf8) ?? ""
+        print("📋 [CloudBaseAuth] 注册响应原始数据: \(responseString)")
+        
+        return try parseSignInResponse(data, formattedPhone: phoneNumber, logPrefix: "注册")
+    }
+    
+    private func parseSignInResponse(_ data: Data, formattedPhone: String, logPrefix: String) throws -> (user: CloudBaseUser, accessToken: String) {
+        let responseString = String(data: data, encoding: .utf8) ?? ""
+        let decoder = JSONDecoder()
         let signInResult: SignInResponse
         do {
-            signInResult = try signInDecoder.decode(SignInResponse.self, from: signInData)
+            signInResult = try decoder.decode(SignInResponse.self, from: data)
         } catch {
-            print("❌ [CloudBaseAuth] JSON 解码失败: \(error)")
+            print("❌ [CloudBaseAuth] \(logPrefix)响应 JSON 解码失败: \(error)")
             print("📋 [CloudBaseAuth] 响应数据: \(responseString)")
             throw NSError(
                 domain: "CloudBaseAuthService",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "登录响应格式错误: \(error.localizedDescription)"]
+                userInfo: [NSLocalizedDescriptionKey: "\(logPrefix)响应格式错误: \(error.localizedDescription)"]
             )
         }
         
-        // 从响应中获取用户ID（优先使用 sub，如果没有则使用 user.uid）
         let userId: String
         if let sub = signInResult.sub, !sub.isEmpty {
             userId = sub
@@ -160,11 +212,10 @@ class CloudBaseAuthService {
             throw NSError(
                 domain: "CloudBaseAuthService",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "登录响应中缺少用户ID"]
+                userInfo: [NSLocalizedDescriptionKey: "响应中缺少用户ID"]
             )
         }
         
-        // 构建用户信息（优先使用响应中的 user 对象，否则使用默认值）
         let user: CloudBaseUser
         if let existingUser = signInResult.user {
             user = existingUser
@@ -180,7 +231,7 @@ class CloudBaseAuthService {
             )
         }
         
-        print("✅ [CloudBaseAuth] 登录成功，userId=\(userId)")
+        print("✅ [CloudBaseAuth] \(logPrefix)成功，userId=\(userId)")
         return (user, signInResult.access_token)
     }
     

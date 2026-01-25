@@ -181,7 +181,7 @@ class LoginViewModel: ObservableObject {
                 
                 // 使用 Token 登录
                 do {
-                    let result = try await userRepository.signInWithWeChat(providerToken: providerToken)
+                    _ = try await userRepository.signInWithWeChat(providerToken: providerToken)
                     
                     // 登录成功
                     isLoggedIn = true

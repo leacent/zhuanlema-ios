@@ -26,6 +26,66 @@
       "timeout": 20,
       "runtime": "Nodejs18.15",
       "handler": "index.main"
+    },
+    {
+      "name": "getCheckInHistory",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getUserStats",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "updateProfile",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getProfile",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getNotifications",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "markNotificationRead",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "submitFeedback",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "uploadAvatar",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getSectorData",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getHotStocks",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
     }
   ],
   "databases": {
@@ -49,6 +109,16 @@
         "name": "sms_codes",
         "aclTag": "ADMINONLY",
         "description": "验证码表"
+      },
+      {
+        "name": "notifications",
+        "aclTag": "PRIVATE",
+        "description": "用户消息通知表"
+      },
+      {
+        "name": "feedback",
+        "aclTag": "PRIVATE",
+        "description": "用户反馈表"
       }
     ]
   }

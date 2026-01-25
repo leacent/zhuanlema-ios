@@ -1,0 +1,9 @@
+{
+  "name": "getHotStocks",
+  "version": "1.0.0",
+  "description": "获取全市场涨幅榜、跌幅榜、活跃榜",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

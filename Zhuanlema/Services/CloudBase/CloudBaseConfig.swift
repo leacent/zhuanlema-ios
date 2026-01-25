@@ -37,7 +37,29 @@ struct CloudBaseConfig {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !publishableKey.isEmpty && publishableKey != "REPLACE_WITH_PUBLISHABLE_KEY" {
             request.setValue("Bearer \(publishableKey)", forHTTPHeaderField: "Authorization")
+            // 同时添加 ApiKey 头以增强网关鉴权稳定性
+            request.setValue(publishableKey, forHTTPHeaderField: "X-CloudBase-ApiKey")
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    }
+
+    /// 为需要用户认证的请求添加 Authorization: Bearer accessToken 与 body
+    /// 网关需要 ApiKey 识别环境，Authorization 传递用户身份
+    static func configureRequestWithAccessToken(_ request: inout URLRequest, body: [String: Any], accessToken: String) throws {
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        if !publishableKey.isEmpty && publishableKey != "REPLACE_WITH_PUBLISHABLE_KEY" {
+            request.setValue(publishableKey, forHTTPHeaderField: "X-CloudBase-ApiKey")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    }
+
+    /// 使用 Publishable Key 鉴权，并将用户 accessToken 放入 body（解决网关对用户 Token 返回 403 时的方案）
+    /// Body 会与 access_token 合并后发送，云函数从 event.access_token 解析用户身份
+    static func configureRequestWithUserTokenInBody(_ request: inout URLRequest, body: [String: Any], accessToken: String) throws {
+        var merged = body
+        merged["access_token"] = accessToken
+        try configureRequest(&request, body: merged)
     }
 }

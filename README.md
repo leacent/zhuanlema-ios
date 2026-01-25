@@ -46,6 +46,17 @@ open Zhuanlema.xcodeproj
 
 在 Xcode 中选择模拟器或真机，点击 Run (⌘R)
 
+### 模拟器下常见控制台提示（可忽略）
+
+运行在 **iOS 模拟器** 时，可能出现：
+
+```
+CHHapticPattern patternForKey:error: Failed to read pattern library data ...
+hapticpatternlibrary.plist couldn't be opened because there is no such file.
+```
+
+这是系统触觉库在模拟器上不存在导致的，**不影响功能**，可忽略。真机上不会出现。项目内如需触觉反馈请使用 `HapticHelper`（仅在真机触发）。
+
 ## 📐 项目架构
 
 ```

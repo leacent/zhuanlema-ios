@@ -1,0 +1,9 @@
+{
+  "name": "getSectorData",
+  "version": "1.0.0",
+  "description": "获取行业板块和概念板块数据",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "unlikePost",
+  "version": "1.0.0",
+  "description": "Unlike a post (auth required)",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

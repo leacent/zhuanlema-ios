@@ -106,18 +106,22 @@ class CommunityViewModel: ObservableObject {
     }
     
     /**
-     * 点赞
+     * 点赞 / 取消点赞（需登录）
      *
-     * @param post 帖子
+     * @param post 帖子；根据 post.isLiked 决定执行点赞或取消点赞
      */
     func likePost(_ post: Post) {
         Task {
             do {
-                try await postRepository.likePost(postId: post.id)
-                
-                // 更新列表中的点赞数
+                let result: (likeCount: Int, isLiked: Bool)
+                if post.isLiked {
+                    result = try await postRepository.unlikePost(postId: post.id)
+                } else {
+                    result = try await postRepository.likePost(postId: post.id)
+                }
                 if let index = posts.firstIndex(where: { $0.id == post.id }) {
-                    posts[index].likeCount += 1
+                    posts[index].likeCount = result.likeCount
+                    posts[index].isLiked = result.isLiked
                 }
             } catch {
                 errorMessage = error.localizedDescription

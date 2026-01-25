@@ -7,10 +7,7 @@ import SwiftUI
 struct PostCard: View {
     let post: Post
     let onLike: () -> Void
-    
-    /// 卡片悬停状态
-    @State private var isPressed = false
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 用户头部信息
@@ -59,7 +56,14 @@ struct PostCard: View {
                 .lineSpacing(4)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
-            
+
+            // 图片缩略条
+            if !post.images.isEmpty {
+                PostImageStrip(urls: post.images, style: .thumbnails)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
+
             // 标签
             if !post.tags.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -116,11 +120,13 @@ struct PostCard: View {
                 }
                 
                 Spacer()
-                
+
                 // 分享按钮
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                ShareLink(item: shareableText, subject: Text("赚了吗 · 心得分享"), message: Text(String(post.content.prefix(300)))) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -128,33 +134,18 @@ struct PostCard: View {
         }
         .background(Color(uiColor: ColorPalette.bgSecondary))
         .cornerRadius(12)
-        .shadow(
-            color: isPressed ? 
-                Color(uiColor: ColorPalette.brandPrimary).opacity(0.1) : 
-                Color.black.opacity(0.04),
-            radius: isPressed ? 8 : 4,
-            x: 0,
-            y: isPressed ? 4 : 2
-        )
-        .scaleEffect(isPressed ? 0.98 : 1.0)
-        .animation(.easeOut(duration: 0.15), value: isPressed)
-        .onTapGesture {
-            // 点击卡片进入详情
-            withAnimation(.easeOut(duration: 0.1)) {
-                isPressed = true
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.easeOut(duration: 0.1)) {
-                    isPressed = false
-                }
-            }
-        }
+        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
     
     /// 显示昵称（优先级：post.nickname > post.user?.nickname > "匿名用户"）
     private var displayNickname: String {
         return post.nickname ?? post.user?.nickname ?? "匿名用户"
+    }
+
+    /// 分享用文案（链接为应用 scheme，无 web 页时可分享纯文本）
+    private var shareableText: String {
+        let snippet = post.content.count > 100 ? String(post.content.prefix(100)) + "…" : post.content
+        return "【赚了吗】\(snippet)\nzhuanlema://post/\(post.id)"
     }
     
     /// 格式化时间显示

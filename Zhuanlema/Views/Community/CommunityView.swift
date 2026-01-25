@@ -1,7 +1,10 @@
 /**
- * 社区页面
- * 展示交易心得列表
- * 免登录浏览，发布/评论需登录
+ * 社区首页
+ * - 列表：单列信息流，下拉刷新、上滑加载更多
+ * - 详情点击：点击卡片进入 PostDetailView（全文、图片、标签、评论区）
+ * - 点赞：列表与详情均支持；未登录点击会提示登录
+ * - 评论：在帖子详情页底部查看与发表评论（需登录）
+ * 免登录可浏览列表与详情；发布、点赞、评论需登录
  */
 import SwiftUI
 import Combine
@@ -49,7 +52,7 @@ struct CommunityView: View {
                     showLoginSheet = true
                 }
             } message: {
-                Text("发布心得需要先登录账号")
+                Text("登录后可以点赞、评论和发布心得")
             }
             .alert("加载失败", isPresented: Binding(
                 get: { viewModel.errorMessage != nil },
@@ -139,15 +142,21 @@ struct CommunityView: View {
     private var postListView: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(viewModel.posts) { post in
-                    PostCard(post: post) {
-                        viewModel.likePost(post)
+                ForEach(Array(viewModel.posts.enumerated()), id: \.element.id) { index, post in
+                    NavigationLink(destination: PostDetailView(post: post)) {
+                        PostCard(post: post, onLike: { handleLikeTap(post: post) })
                     }
+                    .buttonStyle(PlainButtonStyle())
                     .padding(.horizontal, 16)
+                    .onAppear {
+                        if index == viewModel.posts.count - 1 {
+                            viewModel.loadPosts()
+                        }
+                    }
                 }
             }
             .padding(.vertical, 12)
-            
+
             // 加载更多指示器
             if viewModel.isLoading {
                 ProgressView()
@@ -163,10 +172,17 @@ struct CommunityView: View {
     /// 处理发布按钮点击
     private func handlePublishTap() {
         if appState.isLoggedIn {
-            // 已登录，显示发布页面
             viewModel.showComposePage = true
         } else {
-            // 未登录，显示提示
+            showLoginAlert = true
+        }
+    }
+
+    /// 处理点赞按钮点击（未登录时提示去登录）
+    private func handleLikeTap(post: Post) {
+        if appState.isLoggedIn {
+            viewModel.likePost(post)
+        } else {
             showLoginAlert = true
         }
     }

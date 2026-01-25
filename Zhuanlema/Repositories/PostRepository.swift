@@ -11,14 +11,15 @@ class PostRepository {
     private let userRepository = UserRepository()
     
     /**
-     * 获取帖子列表
+     * 获取帖子列表（已登录时会带上点赞状态）
      *
      * @param limit 每页数量
      * @param offset 偏移量
      * @returns 帖子列表
      */
     func getPosts(limit: Int = 20, offset: Int = 0) async throws -> [Post] {
-        return try await databaseService.getPosts(limit: limit, offset: offset)
+        let token = userRepository.getCurrentAccessToken()
+        return try await databaseService.getPosts(limit: limit, offset: offset, accessToken: token)
     }
     
     /**
@@ -47,22 +48,23 @@ class PostRepository {
     }
     
     /**
-     * 点赞帖子
-     *
-     * @param postId 帖子ID
+     * 点赞帖子（需登录）
+     * @returns 更新后的 likeCount 与 isLiked
      */
-    func likePost(postId: String) async throws {
-        // 注意：这里简化处理，实际应该调用云函数或数据库更新
-        // MVP 阶段暂不实现
+    func likePost(postId: String) async throws -> (likeCount: Int, isLiked: Bool) {
+        guard let token = userRepository.getCurrentAccessToken() else {
+            throw NSError(domain: "PostRepository", code: -1, userInfo: [NSLocalizedDescriptionKey: "请先登录"])
+        }
+        return try await databaseService.likePost(postId: postId, accessToken: token)
     }
-    
+
     /**
-     * 取消点赞
-     *
-     * @param postId 帖子ID
+     * 取消点赞（需登录）
      */
-    func unlikePost(postId: String) async throws {
-        // 注意：这里简化处理，实际应该调用云函数或数据库更新
-        // MVP 阶段暂不实现
+    func unlikePost(postId: String) async throws -> (likeCount: Int, isLiked: Bool) {
+        guard let token = userRepository.getCurrentAccessToken() else {
+            throw NSError(domain: "PostRepository", code: -1, userInfo: [NSLocalizedDescriptionKey: "请先登录"])
+        }
+        return try await databaseService.unlikePost(postId: postId, accessToken: token)
     }
 }

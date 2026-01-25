@@ -127,6 +127,10 @@ class CloudBaseDatabaseService {
         guard result.success, let data = result.data else {
             throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "获取资料失败"])
         }
+        #if DEBUG
+        let avatarPreview = data.avatar.isEmpty ? "(empty)" : String(data.avatar.prefix(60)) + (data.avatar.count > 60 ? "…" : "")
+        print("[getProfile] 收到 avatar.len=\(data.avatar.count) avatar=\(avatarPreview)")
+        #endif
         return data.toUser()
     }
 
@@ -227,12 +231,14 @@ class CloudBaseDatabaseService {
     
     /**
      * 获取帖子列表（通过 HTTP API + Publishable Key）
+     * 若传入 accessToken，云函数会返回 likedPostIds，并合并进 post.isLiked
      *
      * @param limit 每页数量
      * @param offset 偏移量
+     * @param accessToken 可选；登录用户 token 用于拉取当前用户点赞状态
      * @returns 帖子列表
      */
-    func getPosts(limit: Int = 20, offset: Int = 0) async throws -> [Post] {
+    func getPosts(limit: Int = 20, offset: Int = 0, accessToken: String? = nil) async throws -> [Post] {
         guard CloudBaseHTTPClient.hasPublishableKey else {
             let msg = "请在 CloudBaseConfig 中配置 Publishable Key（云开发控制台 → ApiKey 管理）"
             print("❌ [CloudBaseDatabaseService] \(msg)")
@@ -241,17 +247,26 @@ class CloudBaseDatabaseService {
 
         struct PostsData: Codable {
             let posts: [Post]
+            let likedPostIds: [String]?
         }
 
-        let body: [String: Any] = ["limit": limit, "offset": offset]
+        var body: [String: Any] = ["limit": limit, "offset": offset]
+        if let token = accessToken, !token.isEmpty {
+            body["access_token"] = token
+        }
         let result: CloudFunctionResponse<PostsData> = try await CloudBaseHTTPClient.call(name: "getPosts", body: body)
 
-        guard result.success, let posts = result.data?.posts else {
+        guard result.success, let data = result.data else {
             let errorMsg = result.message ?? "获取帖子列表失败"
             print("❌ [CloudBaseDatabaseService] getPosts 失败: \(errorMsg)")
             throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMsg])
         }
 
+        var posts = data.posts
+        let likedSet = Set(data.likedPostIds ?? [])
+        for i in posts.indices {
+            posts[i].isLiked = likedSet.contains(posts[i].id)
+        }
         print("✅ [CloudBaseDatabaseService] getPosts 成功，获取到 \(posts.count) 条帖子")
         return posts
     }
@@ -284,7 +299,127 @@ class CloudBaseDatabaseService {
         }
         return postData.postId
     }
-    
+
+    /// 点赞 / 取消点赞 云函数返回
+    struct LikeResultData: Codable {
+        let likeCount: Int
+        let isLiked: Bool
+    }
+
+    /**
+     * 点赞帖子（需登录）
+     */
+    func likePost(postId: String, accessToken: String) async throws -> (likeCount: Int, isLiked: Bool) {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        let body: [String: Any] = ["postId": postId]
+        let result: CloudFunctionResponse<LikeResultData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "likePost", body: body, accessToken: accessToken)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "点赞失败"])
+        }
+        return (data.likeCount, data.isLiked)
+    }
+
+    /**
+     * 取消点赞（需登录）
+     */
+    func unlikePost(postId: String, accessToken: String) async throws -> (likeCount: Int, isLiked: Bool) {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        let body: [String: Any] = ["postId": postId]
+        let result: CloudFunctionResponse<LikeResultData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "unlikePost", body: body, accessToken: accessToken)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "取消点赞失败"])
+        }
+        return (data.likeCount, data.isLiked)
+    }
+
+    // MARK: - 评论
+
+    /**
+     * 获取帖子评论列表
+     */
+    func getComments(postId: String, limit: Int = 20, offset: Int = 0, accessToken: String? = nil) async throws -> [Comment] {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        struct CommentsData: Codable {
+            let comments: [Comment]
+            let likedCommentIds: [String]?
+        }
+        var body: [String: Any] = ["postId": postId, "limit": limit, "offset": offset]
+        if let token = accessToken, !token.isEmpty {
+            body["access_token"] = token
+        }
+        let result: CloudFunctionResponse<CommentsData> = try await CloudBaseHTTPClient.call(name: "getComments", body: body)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "获取评论失败"])
+        }
+        var comments = data.comments
+        let likedSet = Set(data.likedCommentIds ?? [])
+        for i in comments.indices {
+            comments[i].isLiked = likedSet.contains(comments[i].id)
+        }
+        return comments
+    }
+
+    /**
+     * 发表评论（需登录）
+     * @returns 更新后的评论数
+     */
+    func createComment(postId: String, content: String, parentId: String? = nil, accessToken: String) async throws -> Int {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        struct CreateCommentData: Codable {
+            let commentCount: Int
+        }
+        var body: [String: Any] = ["postId": postId, "content": content]
+        if let pid = parentId, !pid.isEmpty {
+            body["parentId"] = pid
+        }
+        let result: CloudFunctionResponse<CreateCommentData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "createComment", body: body, accessToken: accessToken)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "发表评论失败"])
+        }
+        return data.commentCount
+    }
+
+    /// 评论点赞云函数返回
+    struct CommentLikeResultData: Codable {
+        let commentId: String
+        let likeCount: Int
+        let isLiked: Bool
+    }
+
+    /// 点赞评论（需登录）
+    func likeComment(commentId: String, accessToken: String) async throws -> (commentId: String, likeCount: Int, isLiked: Bool) {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        let body: [String: Any] = ["commentId": commentId]
+        let result: CloudFunctionResponse<CommentLikeResultData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "likeComment", body: body, accessToken: accessToken)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "点赞评论失败"])
+        }
+        return (data.commentId, data.likeCount, data.isLiked)
+    }
+
+    /// 取消点赞评论（需登录）
+    func unlikeComment(commentId: String, accessToken: String) async throws -> (commentId: String, likeCount: Int, isLiked: Bool) {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        let body: [String: Any] = ["commentId": commentId]
+        let result: CloudFunctionResponse<CommentLikeResultData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "unlikeComment", body: body, accessToken: accessToken)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "取消点赞评论失败"])
+        }
+        return (data.commentId, data.likeCount, data.isLiked)
+    }
+
     // MARK: - 行情数据
     
     /**

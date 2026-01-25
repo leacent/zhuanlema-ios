@@ -1,0 +1,9 @@
+{
+  "name": "likeComment",
+  "version": "1.0.0",
+  "description": "Like a comment (auth required)",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

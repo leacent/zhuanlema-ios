@@ -1,0 +1,9 @@
+{
+  "name": "initAvatarPool",
+  "version": "1.0.0",
+  "description": "One-time init: fill avatar_pool with 50 anime avatar URLs for new user assignment.",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

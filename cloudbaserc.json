@@ -22,6 +22,42 @@
       "handler": "index.main"
     },
     {
+      "name": "likePost",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "unlikePost",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getComments",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "createComment",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "likeComment",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "unlikeComment",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
       "name": "createCheckIn",
       "timeout": 20,
       "runtime": "Nodejs18.15",
@@ -86,6 +122,12 @@
       "timeout": 20,
       "runtime": "Nodejs18.15",
       "handler": "index.main"
+    },
+    {
+      "name": "initAvatarPool",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
     }
   ],
   "databases": {
@@ -119,6 +161,31 @@
         "name": "feedback",
         "aclTag": "PRIVATE",
         "description": "用户反馈表"
+      },
+      {
+        "name": "avatar_pool",
+        "aclTag": "PRIVATE",
+        "description": "动漫头像 URL 池，新用户随机分配"
+      },
+      {
+        "name": "user_posts",
+        "aclTag": "READONLY",
+        "description": "社区帖子表（云函数读写）"
+      },
+      {
+        "name": "post_likes",
+        "aclTag": "PRIVATE",
+        "description": "帖子点赞记录（云函数读写）"
+      },
+      {
+        "name": "post_comments",
+        "aclTag": "PRIVATE",
+        "description": "帖子评论表（云函数读写）"
+      },
+      {
+        "name": "comment_likes",
+        "aclTag": "PRIVATE",
+        "description": "评论点赞记录（云函数读写）"
       }
     ]
   }

@@ -52,6 +52,7 @@ exports.main = async (event, context) => {
       images: images,
       tags: tags,
       likeCount: 0,
+      commentCount: 0,
       createdAt: Date.now()
     });
 

@@ -41,14 +41,19 @@ class UserRepository {
         if let userData = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(userData, forKey: "currentUser")
         }
-        // 拉取后台资料（新用户会创建 users 文档）；用本次登录的手机号写入 users 表（Auth 返回的 user 可能不含 phone_number）
+        // 拉取后台资料（新用户会创建 users 文档，含 AI 昵称 + 随机头像）；用本次登录的手机号写入 users 表
         let phoneForSync = phoneNumber.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "+86", with: "").trimmingCharacters(in: .whitespaces)
-        if let refreshed = try? await databaseService.getProfile(accessToken: result.accessToken, phoneNumberForNewUser: phoneForSync.isEmpty ? nil : phoneForSync) {
+        var refreshed: User?
+        refreshed = try? await databaseService.getProfile(accessToken: result.accessToken, phoneNumberForNewUser: phoneForSync.isEmpty ? nil : phoneForSync)
+        if refreshed == nil {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            refreshed = try? await databaseService.getProfile(accessToken: result.accessToken, phoneNumberForNewUser: phoneForSync.isEmpty ? nil : phoneForSync)
+        }
+        if let refreshed = refreshed {
             user = refreshed
             if let userData = try? JSONEncoder().encode(user) {
                 UserDefaults.standard.set(userData, forKey: "currentUser")
             }
-            // 老用户补写手机号：若后台资料无 phone_number 且本地有手机号，调用 updateProfile 补写
             let existingPhone = (refreshed.phoneNumber ?? "").trimmingCharacters(in: .whitespaces)
             if existingPhone.isEmpty && !phoneForSync.isEmpty {
                 try? await databaseService.updateProfile(nickname: nil, avatar: nil, phoneNumber: phoneForSync, accessToken: result.accessToken)

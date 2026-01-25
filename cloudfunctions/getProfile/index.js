@@ -1,6 +1,6 @@
 /**
  * 获取当前用户资料（需登录）
- * 新用户（无 users 文档）时自动分配随机动漫头像和随机昵称
+ * 新用户（无 users 文档）时：昵称由 CloudBase AI（混元）生成，头像从 avatar_pool 集合随机取；失败则用默认「用户」和空头像。
  * 支持两种方式获取用户身份：
  * 1. 网关转发用户态：auth.getUserInfo() 得到 uid
  * 2. 网关仅 Publishable Key：从 event.access_token 解析 JWT 的 sub 作为 userId
@@ -34,42 +34,62 @@ function getUserIdFromEvent(event) {
   }
 }
 
-// 随机动漫风格头像 URL（可替换为自有 CDN）
-const ANIME_AVATARS = [
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a1",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a2",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a3",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a4",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a5",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a6",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a7",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a8",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a9",
-  "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=a10",
-  "https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=b1",
-  "https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=b2",
-  "https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=b3",
-  "https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=b4",
-  "https://api.dicebear.com/7.x/lorelei-neutral/svg?seed=b5",
-  "https://api.dicebear.com/7.x/notionists/svg?seed=c1",
-  "https://api.dicebear.com/7.x/notionists/svg?seed=c2",
-  "https://api.dicebear.com/7.x/notionists/svg?seed=c3",
-  "https://api.dicebear.com/7.x/notionists/svg?seed=c4",
-  "https://api.dicebear.com/7.x/notionists/svg?seed=c5",
-];
+/** 使用 CloudBase AI（混元）生成 2–6 字中文昵称，失败返回 null */
+async function getNicknameWithAI() {
+  try {
+    const ai = app.ai();
+    const model = ai.createModel("hunyuan-exp");
+    const res = await model.generateText({
+      model: "hunyuan-turbos-latest",
+      messages: [{
+        role: "user",
+        content: "请生成一个 2 到 6 个汉字的中文昵称，用于投资理财社区 App，要求可爱、有趣、不涉及真实名人。只输出昵称本身，不要引号、不要解释、不要标点。",
+      }],
+    });
+    if (!res || typeof res.text !== "string") return null;
+    let name = res.text.trim().replace(/["""''\n\r]/g, "").slice(0, 6);
+    if (!name) return null;
+    return name;
+  } catch (e) {
+    console.warn("[getProfile] AI 昵称生成失败，使用默认:", e.message);
+    return null;
+  }
+}
 
-// 随机昵称（动漫/趣味风格）
-const RANDOM_NICKNAMES = [
-  "小萌新", "咸鱼选手", "吃瓜群众", "躺平达人", "发财小能手",
-  "锦鲤本鲤", "暴富预备役", "今日份开心", "攒钱小透明", "搞钱人",
-  "佛系韭菜", "明日暴富", "好运连连", "稳稳的幸福", "小确幸",
-  "今日宜发财", "赚点小钱钱", "人间清醒", "打工人之光", "富贵花开",
-  "财源广进", "日日涨", "小财迷", "稳健型选手", "长期主义",
-  "定投小王子", "复利信徒", "价值投资者", "趋势追随者", "抄底达人",
-];
+/** 从 avatar_pool 集合随机取一条头像 URL，失败或空返回 "" */
+async function getRandomAvatarFromPool() {
+  try {
+    const col = db.collection("avatar_pool");
+    const res = await col.limit(50).get();
+    // 兼容多种可能返回格式：Node SDK 通常 { data: Array }，部分环境可能 result.data / list
+    const rawList = res.data ?? res.result?.data ?? res.list;
+    const list = Array.isArray(rawList) ? rawList : (rawList != null ? [rawList] : []);
+    console.log("[getProfile] avatar_pool res.keys=" + Object.keys(res).join(",") + " list.length=" + list.length);
+    if (list.length === 0) {
+      console.warn("[getProfile] avatar_pool 无数据，请确认集合已有记录且 getProfile 有读权限");
+      return "";
+    }
+    const item = list[Math.floor(Math.random() * list.length)];
+    const url = item && (item.url || item.avatar);
+    const result = typeof url === "string" && url.trim() ? url.trim() : "";
+    if (!result && item) {
+      console.warn("[getProfile] avatar_pool 项无 url/avatar 字段, item.keys=" + Object.keys(item).join(","));
+    }
+    console.log("[getProfile] 随机头像 URL:", result ? result.slice(0, 80) + "..." : "(empty)");
+    return result;
+  } catch (e) {
+    console.warn("[getProfile] avatar_pool 读取失败:", e.message, e.code || "");
+    return "";
+  }
+}
 
-function pickRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
+/** iOS AsyncImage 不支持 SVG，将 DiceBear 的 SVG URL 转为 PNG 以便客户端能正常显示 */
+function avatarUrlToPng(url) {
+  if (typeof url !== "string" || !url.trim()) return url;
+  if (url.includes("dicebear.com") && url.includes("/svg")) {
+    return url.replace(/\/svg\?/, "/png?").replace(/\/svg$/, "/png");
+  }
+  return url;
 }
 
 /** Normalize stored timestamp to seconds (handles ms number or { $date: ms }) */
@@ -117,14 +137,14 @@ exports.main = async (event, context) => {
 
     if (!data || Object.keys(data).length === 0) {
       console.log("[getProfile] 未找到用户文档，准备创建新用户:", userId);
-      // 新用户：分配随机动漫头像和随机昵称并落库；若有传入 phone_number 则写入（验证码注册后首次拉资料）
-      const nickname = pickRandom(RANDOM_NICKNAMES);
-      const avatar = pickRandom(ANIME_AVATARS);
+      const nickname = (await getNicknameWithAI()) || "用户";
+      const avatarRaw = (await getRandomAvatarFromPool()) || "";
+      const avatar = avatarUrlToPng(avatarRaw);
+      console.log("[getProfile] 新用户创建 nickname=" + nickname + " avatarLen=" + avatar.length);
       const now = Date.now();
       const created_at = now / 1000;
       const phone_number = phoneForNewUser || null;
       await usersCol.doc(userId).set({
-        _id: userId,
         nickname,
         avatar,
         phone_number,
@@ -133,13 +153,7 @@ exports.main = async (event, context) => {
       });
       return {
         success: true,
-        data: {
-          _id: userId,
-          nickname,
-          avatar,
-          phone_number,
-          created_at,
-        },
+        data: { _id: userId, nickname, avatar, phone_number, created_at },
       };
     }
 
@@ -147,6 +161,16 @@ exports.main = async (event, context) => {
 
     // 约定：仅从 data.avatar 读，不写 data.avatarUrl / data.avatar_url 等兜底，错误及时暴露
     let avatarVal = typeof data.avatar === "string" ? data.avatar.trim() : "";
+    // 老用户曾未写过头像（空），则从 avatar_pool 补一份并写回
+    if (!avatarVal) {
+      const pooled = await getRandomAvatarFromPool();
+      if (pooled) {
+        avatarVal = avatarUrlToPng(pooled);
+        const now = Date.now();
+        await usersCol.doc(userId).update({ avatar: avatarVal, updatedAt: now });
+        console.log("[getProfile] 已为无头像用户补写随机头像");
+      }
+    }
 
     // 约定：只向客户端返回可用的 https 链接或空，不返回 fileID。若存的是 fileID 则换成临时链接
     if (avatarVal && avatarVal.startsWith("cloud://")) {
@@ -162,11 +186,16 @@ exports.main = async (event, context) => {
       }
     }
 
+    let avatarForClient = avatarUrlToPng(avatarVal);
+    if (avatarForClient !== avatarVal && avatarForClient) {
+      const now = Date.now();
+      await usersCol.doc(userId).update({ avatar: avatarForClient, updatedAt: now });
+    }
     console.log("[getProfile] 数据库读取成功:", {
       userId,
       nickname: data.nickname,
-      avatarLen: avatarVal.length,
-      avatarPreview: avatarVal ? avatarVal.slice(0, 60) + "..." : "(empty)"
+      avatarLen: avatarForClient.length,
+      avatarPreview: avatarForClient ? avatarForClient.slice(0, 60) + "..." : "(empty)"
     });
 
     return {
@@ -174,7 +203,7 @@ exports.main = async (event, context) => {
       data: {
         _id: data._id || userId,
         nickname: data.nickname || "用户",
-        avatar: avatarVal,
+        avatar: avatarForClient,
         phone_number: data.phone_number ?? null,
         created_at: createdAtToSeconds(data.createdAt) ?? Date.now() / 1000,
       },

@@ -54,6 +54,21 @@ struct Post: Codable, Identifiable {
         commentCount = try container.decodeIfPresent(Int.self, forKey: .commentCount) ?? 0
         createdAt = try container.decode(Double.self, forKey: .createdAt)
     }
+
+    /// Memberwise init for previews and tests
+    init(id: String, userId: String, content: String, nickname: String?, images: [String], tags: [String], likeCount: Int, commentCount: Int, createdAt: Double, user: User? = nil, isLiked: Bool = false) {
+        self.id = id
+        self.userId = userId
+        self.content = content
+        self.nickname = nickname
+        self.images = images
+        self.tags = tags
+        self.likeCount = likeCount
+        self.commentCount = commentCount
+        self.createdAt = createdAt
+        self.user = user
+        self.isLiked = isLiked
+    }
 }
 
 extension Post {

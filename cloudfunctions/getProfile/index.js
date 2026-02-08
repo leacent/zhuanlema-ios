@@ -34,29 +34,69 @@ function getUserIdFromEvent(event) {
   }
 }
 
-/** 使用 CloudBase AI（混元）生成 2–6 字中文昵称，失败返回 null */
+/** 预定义随机昵称池（AI 生成失败时的可靠兜底） */
+const RANDOM_NICKNAMES = [
+  "小财神", "追涨达人", "韭菜花开", "牛气冲天", "稳稳当当",
+  "慧眼识金", "财运亨通", "涨停先锋", "快乐基民", "理财小能手",
+  "星辰大海", "逍遥投手", "钱多多", "小红薯", "大聪明",
+  "股海冲浪", "定投侠", "财迷小猫", "锦鲤附体", "躺平理财",
+  "小确幸", "暴富少年", "金牛座", "一夜暴富", "微笑曲线",
+  "价值投资", "趋势猎人", "佛系理财", "闷声发财", "板凳投手",
+  "赚钱机器", "黑马猎手", "淡定哥", "小白进化", "理财咸鱼",
+  "满仓冲锋", "半仓观望", "空仓等风", "抄底小王子", "打板少年",
+];
+
+/** 使用 CloudBase AI（混元）生成 2–6 字中文昵称，失败时从预定义池随机选 */
 async function getNicknameWithAI() {
   try {
     const ai = app.ai();
     const model = ai.createModel("hunyuan-exp");
     const res = await model.generateText({
-      model: "hunyuan-turbos-latest",
+      model: "hunyuan-2.0-instruct-20251111",
       messages: [{
         role: "user",
         content: "请生成一个 2 到 6 个汉字的中文昵称，用于投资理财社区 App，要求可爱、有趣、不涉及真实名人。只输出昵称本身，不要引号、不要解释、不要标点。",
       }],
     });
-    if (!res || typeof res.text !== "string") return null;
-    let name = res.text.trim().replace(/["""''\n\r]/g, "").slice(0, 6);
-    if (!name) return null;
+    if (!res || typeof res.text !== "string") {
+      console.warn("[getProfile] AI 返回格式异常:", JSON.stringify(res).slice(0, 200));
+      return null;
+    }
+    let name = res.text.trim().replace(/["""''\n\r\s.。，,!！?？]/g, "").slice(0, 6);
+    if (!name || name.length < 2) {
+      console.warn("[getProfile] AI 昵称过短或为空:", res.text);
+      return null;
+    }
+    console.log("[getProfile] AI 生成昵称:", name);
     return name;
   } catch (e) {
-    console.warn("[getProfile] AI 昵称生成失败，使用默认:", e.message);
+    console.warn("[getProfile] AI 昵称生成失败:", e.message);
     return null;
   }
 }
 
-/** 从 avatar_pool 集合随机取一条头像 URL，失败或空返回 "" */
+/** 从预定义池中随机选一个昵称 + 随机后缀，保证唯一性 */
+function getRandomNickname() {
+  const base = RANDOM_NICKNAMES[Math.floor(Math.random() * RANDOM_NICKNAMES.length)];
+  const suffix = Math.floor(Math.random() * 900 + 100); // 100-999
+  return base + suffix;
+}
+
+/** 内置兜底头像池（当 avatar_pool 集合为空或不可用时使用） */
+const FALLBACK_AVATARS = [
+  "https://api.dicebear.com/7.x/adventurer-neutral/png?seed=fallback1&size=200",
+  "https://api.dicebear.com/7.x/adventurer-neutral/png?seed=fallback2&size=200",
+  "https://api.dicebear.com/7.x/lorelei-neutral/png?seed=fallback3&size=200",
+  "https://api.dicebear.com/7.x/lorelei-neutral/png?seed=fallback4&size=200",
+  "https://api.dicebear.com/7.x/notionists/png?seed=fallback5&size=200",
+  "https://api.dicebear.com/7.x/fun-emoji/png?seed=fallback6&size=200",
+  "https://api.dicebear.com/7.x/avataaars-neutral/png?seed=fallback7&size=200",
+  "https://api.dicebear.com/7.x/bottts-neutral/png?seed=fallback8&size=200",
+  "https://api.dicebear.com/7.x/micah/png?seed=fallback9&size=200",
+  "https://api.dicebear.com/7.x/thumbs/png?seed=fallback10&size=200",
+];
+
+/** 从 avatar_pool 集合随机取一条头像 URL，失败或空时使用内置兜底 */
 async function getRandomAvatarFromPool() {
   try {
     const col = db.collection("avatar_pool");
@@ -66,20 +106,22 @@ async function getRandomAvatarFromPool() {
     const list = Array.isArray(rawList) ? rawList : (rawList != null ? [rawList] : []);
     console.log("[getProfile] avatar_pool res.keys=" + Object.keys(res).join(",") + " list.length=" + list.length);
     if (list.length === 0) {
-      console.warn("[getProfile] avatar_pool 无数据，请确认集合已有记录且 getProfile 有读权限");
-      return "";
+      console.warn("[getProfile] avatar_pool 无数据，使用内置兜底头像");
+      return FALLBACK_AVATARS[Math.floor(Math.random() * FALLBACK_AVATARS.length)];
     }
     const item = list[Math.floor(Math.random() * list.length)];
     const url = item && (item.url || item.avatar);
     const result = typeof url === "string" && url.trim() ? url.trim() : "";
     if (!result && item) {
       console.warn("[getProfile] avatar_pool 项无 url/avatar 字段, item.keys=" + Object.keys(item).join(","));
+      return FALLBACK_AVATARS[Math.floor(Math.random() * FALLBACK_AVATARS.length)];
     }
     console.log("[getProfile] 随机头像 URL:", result ? result.slice(0, 80) + "..." : "(empty)");
     return result;
   } catch (e) {
     console.warn("[getProfile] avatar_pool 读取失败:", e.message, e.code || "");
-    return "";
+    // 集合不存在或其他错误时使用内置兜底
+    return FALLBACK_AVATARS[Math.floor(Math.random() * FALLBACK_AVATARS.length)];
   }
 }
 
@@ -137,7 +179,7 @@ exports.main = async (event, context) => {
 
     if (!data || Object.keys(data).length === 0) {
       console.log("[getProfile] 未找到用户文档，准备创建新用户:", userId);
-      const nickname = (await getNicknameWithAI()) || "用户";
+      const nickname = (await getNicknameWithAI()) || getRandomNickname();
       const avatarRaw = (await getRandomAvatarFromPool()) || "";
       const avatar = avatarUrlToPng(avatarRaw);
       console.log("[getProfile] 新用户创建 nickname=" + nickname + " avatarLen=" + avatar.length);

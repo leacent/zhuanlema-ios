@@ -58,6 +58,12 @@
       "handler": "index.main"
     },
     {
+      "name": "deleteComment",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
       "name": "createCheckIn",
       "timeout": 20,
       "runtime": "Nodejs18.15",
@@ -125,6 +131,24 @@
     },
     {
       "name": "initAvatarPool",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "deleteUserByPhone",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "uploadPostImage",
+      "timeout": 30,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "deletePost",
       "timeout": 20,
       "runtime": "Nodejs18.15",
       "handler": "index.main"

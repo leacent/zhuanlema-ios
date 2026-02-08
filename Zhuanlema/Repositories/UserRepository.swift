@@ -5,8 +5,12 @@
 import Foundation
 
 class UserRepository {
-    private let authService = CloudBaseAuthService.shared
-    private let databaseService = CloudBaseDatabaseService.shared
+    /// 使用计算属性访问单例，避免存储强引用导致 @MainActor 类析构时内存错误
+    private var authService: CloudBaseAuthService { CloudBaseAuthService.shared }
+    private var databaseService: CloudBaseDatabaseService { CloudBaseDatabaseService.shared }
+    private let keychain = KeychainService.shared
+
+    private static let tokenKey = "userAccessToken"
     
     // MARK: - 短信验证码登录
     
@@ -35,8 +39,8 @@ class UserRepository {
             verificationCode: verificationCode
         )
         
-        // 保存 token，先写入 auth 用户以便立即可用
-        UserDefaults.standard.set(result.accessToken, forKey: "userAccessToken")
+        // 保存 token 到 Keychain（安全存储）
+        keychain.set(result.accessToken, forKey: Self.tokenKey)
         var user = User(from: result.user)
         if let userData = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(userData, forKey: "currentUser")
@@ -62,65 +66,6 @@ class UserRepository {
         return (user, result.accessToken)
     }
     
-    // MARK: - 微信授权登录
-    
-    /**
-     * 生成微信授权页 URL
-     *
-     * @param redirectUri 重定向 URI
-     * @param state 自定义状态标识
-     * @returns 授权页 URL
-     */
-    func genWeChatRedirectUri(redirectUri: String, state: String) async throws -> String {
-        return try await authService.genWeChatRedirectUri(redirectUri: redirectUri, state: state)
-    }
-    
-    /**
-     * 获取微信授权 Token
-     *
-     * @param providerCode 微信授权返回的 code
-     * @param redirectUri 重定向 URI
-     * @returns provider_token
-     */
-    func grantWeChatToken(providerCode: String, redirectUri: String) async throws -> String {
-        return try await authService.grantWeChatToken(providerCode: providerCode, redirectUri: redirectUri)
-    }
-    
-    /**
-     * 微信登录
-     *
-     * @param providerToken 微信授权 Token
-     * @returns 用户信息和访问令牌
-     */
-    func signInWithWeChat(providerToken: String) async throws -> (user: User, accessToken: String) {
-        do {
-            let result = try await authService.signInWithWeChat(providerToken: providerToken)
-            UserDefaults.standard.set(result.accessToken, forKey: "userAccessToken")
-            var user = User(from: result.user)
-            if let userData = try? JSONEncoder().encode(user) {
-                UserDefaults.standard.set(userData, forKey: "currentUser")
-            }
-            // 拉取后台资料（新用户会拿到随机头像和昵称）并更新本地
-            if let refreshed = try? await refreshProfile() {
-                user = refreshed
-            }
-            return (user, result.accessToken)
-        } catch CloudBaseAuthError.userNotFound {
-            // 用户不存在，需要先注册
-            throw UserRepositoryError.userNotFound
-        }
-    }
-    
-    /**
-     * 绑定微信账号（首次微信登录时使用）
-     *
-     * @param providerToken 微信授权 Token
-     * @param accessToken 当前用户的访问令牌
-     */
-    func bindWeChatProvider(providerToken: String, accessToken: String) async throws {
-        try await authService.bindWeChatProvider(providerToken: providerToken, accessToken: accessToken)
-    }
-    
     // MARK: - 用户信息管理
     
     /**
@@ -142,14 +87,14 @@ class UserRepository {
      * @returns 当前用户的访问令牌
      */
     func getCurrentAccessToken() -> String? {
-        return UserDefaults.standard.string(forKey: "userAccessToken")
+        return keychain.get(forKey: Self.tokenKey)
     }
     
     /**
      * 登出
      */
     func logout() {
-        UserDefaults.standard.removeObject(forKey: "userAccessToken")
+        keychain.delete(forKey: Self.tokenKey)
         UserDefaults.standard.removeObject(forKey: "currentUser")
     }
     

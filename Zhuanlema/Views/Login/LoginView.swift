@@ -1,6 +1,6 @@
 /**
  * 登录界面
- * 支持短信验证码登录和微信授权登录
+ * 支持短信验证码登录，用户不存在时自动注册
  */
 import SwiftUI
 import Combine
@@ -168,39 +168,6 @@ struct LoginView: View {
                             }
                             .disabled(!viewModel.canLogin)
                             
-                            // 分隔线
-                            HStack {
-                                Rectangle()
-                                    .fill(Color(uiColor: ColorPalette.textTertiary))
-                                    .frame(height: 1)
-                                Text("或")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
-                                    .padding(.horizontal, 16)
-                                Rectangle()
-                                    .fill(Color(uiColor: ColorPalette.textTertiary))
-                                    .frame(height: 1)
-                            }
-                            .padding(.vertical, 8)
-                            
-                            // 微信登录按钮
-                            Button(action: {
-                                viewModel.loginWithWeChat()
-                            }) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "message.fill")
-                                        .font(.system(size: 20))
-                                    Text("微信登录")
-                                        .font(.system(size: 17, weight: .semibold))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color(uiColor: ColorPalette.brandPrimary))
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
-                            .disabled(viewModel.isLoading)
-                            
                             // 提示文字
                             Text("登录即同意用户协议和隐私政策")
                                 .font(.system(size: 12))
@@ -221,12 +188,6 @@ struct LoginView: View {
                 // 登录成功，刷新状态并关闭弹窗
                 appState.checkLoginStatus()
                 isPresented = false
-            }
-        }
-        .onOpenURL { url in
-            // 处理微信授权回调
-            if url.scheme == "zhuanlema" && url.host == "wechat" {
-                viewModel.handleWeChatCallback(url: url)
             }
         }
     }

@@ -69,9 +69,9 @@ struct ProfileView: View {
             .task(id: appState.isLoggedIn) {
                 if appState.isLoggedIn {
                     displayedUser = userRepository.getCurrentUser()
-                    // 首次注册后可能仍是 Auth 占位（头像为空或默认第三方 URL），拉一次后台以显示随机头像/昵称
+                    // 首次注册后可能仍是 Auth 占位（头像为空），拉一次后台以显示随机头像/昵称
                     let needsProfileRefresh = displayedUser.map { u in
-                        u.avatar.isEmpty || u.avatar.contains("thirdwx.qlogo.cn")
+                        u.avatar.isEmpty
                     } ?? false
                     if needsProfileRefresh, let u = try? await userRepository.refreshProfile() {
                         displayedUser = u

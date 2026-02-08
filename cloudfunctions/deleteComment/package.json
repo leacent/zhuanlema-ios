@@ -1,0 +1,9 @@
+{
+  "name": "deleteComment",
+  "version": "1.0.0",
+  "description": "Delete/retract a comment (auth required)",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

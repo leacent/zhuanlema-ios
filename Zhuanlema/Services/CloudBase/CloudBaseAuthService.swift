@@ -1,7 +1,7 @@
 /**
  * CloudBase 身份认证服务
  * 使用 CloudBase 官方身份认证模块实现登录功能
- * 支持：短信验证码登录、微信授权登录
+ * 支持：短信验证码登录（用户不存在时自动注册）
  */
 import Foundation
 
@@ -235,219 +235,6 @@ class CloudBaseAuthService {
         return (user, signInResult.access_token)
     }
     
-    // MARK: - 微信授权登录
-    
-    /**
-     * 生成微信授权页 URL
-     * POST /auth/v1/provider/redirect_uri
-     *
-     * @param redirectUri 重定向 URI
-     * @param state 自定义状态标识
-     * @returns 授权页 URL
-     */
-    func genWeChatRedirectUri(redirectUri: String, state: String) async throws -> String {
-        guard CloudBaseHTTPClient.hasPublishableKey else {
-            throw NSError(domain: "CloudBaseAuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
-        }
-        
-        let url = URL(string: "\(CloudBaseConfig.baseURL)/auth/v1/provider/redirect_uri")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(CloudBaseConfig.publishableKey)", forHTTPHeaderField: "Authorization")
-        
-        let body: [String: Any] = [
-            "provider_id": "wx_open",
-            "provider_redirect_uri": redirectUri,
-            "state": state
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        print("🔄 [CloudBaseAuth] 生成微信授权页 URL...")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let httpResponse = response as? HTTPURLResponse
-        let statusCode = httpResponse?.statusCode ?? -1
-        
-        if statusCode != 200 {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            print("❌ [CloudBaseAuth] 生成授权页失败 HTTP \(statusCode): \(errorBody)")
-            throw NSError(domain: "CloudBaseAuthService", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "生成授权页失败"])
-        }
-        
-        let decoder = JSONDecoder()
-        let result = try decoder.decode(ProviderRedirectUriResponse.self, from: data)
-        
-        print("✅ [CloudBaseAuth] 授权页 URL 生成成功")
-        return result.uri
-    }
-    
-    /**
-     * 获取微信授权 Token
-     * POST /auth/v1/provider/token
-     *
-     * @param providerCode 微信授权返回的 code
-     * @param redirectUri 重定向 URI
-     * @returns provider_token
-     */
-    func grantWeChatToken(providerCode: String, redirectUri: String) async throws -> String {
-        guard CloudBaseHTTPClient.hasPublishableKey else {
-            throw NSError(domain: "CloudBaseAuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
-        }
-        
-        let url = URL(string: "\(CloudBaseConfig.baseURL)/auth/v1/provider/token")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(CloudBaseConfig.publishableKey)", forHTTPHeaderField: "Authorization")
-        
-        let body: [String: Any] = [
-            "provider_id": "wx_open",
-            "provider_code": providerCode,
-            "provider_redirect_uri": redirectUri
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        print("🔄 [CloudBaseAuth] 获取微信授权 Token...")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let httpResponse = response as? HTTPURLResponse
-        let statusCode = httpResponse?.statusCode ?? -1
-        
-        if statusCode != 200 {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            print("❌ [CloudBaseAuth] 获取 Token 失败 HTTP \(statusCode): \(errorBody)")
-            throw NSError(domain: "CloudBaseAuthService", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "获取授权 Token 失败"])
-        }
-        
-        let decoder = JSONDecoder()
-        let result = try decoder.decode(ProviderTokenResponse.self, from: data)
-        
-        print("✅ [CloudBaseAuth] Token 获取成功")
-        return result.provider_token
-    }
-    
-    /**
-     * 使用微信授权 Token 登录
-     * POST /auth/v1/signin
-     *
-     * @param providerToken 微信授权 Token
-     * @returns 用户信息和访问令牌
-     */
-    func signInWithWeChat(providerToken: String) async throws -> (user: CloudBaseUser, accessToken: String) {
-        guard CloudBaseHTTPClient.hasPublishableKey else {
-            throw NSError(domain: "CloudBaseAuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
-        }
-        
-        let url = URL(string: "\(CloudBaseConfig.baseURL)/auth/v1/signin")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(CloudBaseConfig.publishableKey)", forHTTPHeaderField: "Authorization")
-        
-        let body: [String: Any] = [
-            "provider_token": providerToken
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        print("🔄 [CloudBaseAuth] 微信登录...")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let httpResponse = response as? HTTPURLResponse
-        let statusCode = httpResponse?.statusCode ?? -1
-        
-        if statusCode != 200 {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            print("❌ [CloudBaseAuth] 微信登录失败 HTTP \(statusCode): \(errorBody)")
-            
-            // 检查是否是用户不存在错误（需要先注册）
-            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let code = errorJson["code"] as? String,
-               code == "not_found" {
-                throw CloudBaseAuthError.userNotFound
-            }
-            
-            throw NSError(domain: "CloudBaseAuthService", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "微信登录失败"])
-        }
-        
-        // 打印原始响应以便调试
-        let responseString = String(data: data, encoding: .utf8) ?? ""
-        print("📋 [CloudBaseAuth] 微信登录响应原始数据: \(responseString)")
-        
-        let decoder = JSONDecoder()
-        let result = try decoder.decode(SignInResponse.self, from: data)
-        
-        // 从响应中获取用户ID（优先使用 sub，如果没有则使用 user.uid）
-        let userId: String
-        if let sub = result.sub, !sub.isEmpty {
-            userId = sub
-        } else if let userUid = result.user?.uid {
-            userId = userUid
-        } else {
-            throw NSError(
-                domain: "CloudBaseAuthService",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "登录响应中缺少用户ID"]
-            )
-        }
-        
-        // 构建用户信息（优先使用响应中的 user 对象，否则使用默认值）
-        let user: CloudBaseUser
-        if let existingUser = result.user {
-            user = existingUser
-        } else {
-            user = CloudBaseUser(
-                uid: userId,
-                nickname: nil,
-                avatar: nil,
-                email: nil,
-                phone_number: nil,
-                created_at: nil,
-                updated_at: nil
-            )
-        }
-        
-        print("✅ [CloudBaseAuth] 微信登录成功，userId=\(userId)")
-        return (user, result.access_token)
-    }
-    
-    /**
-     * 绑定微信账号（首次微信登录时使用）
-     * POST /auth/v1/provider/bind
-     *
-     * @param providerToken 微信授权 Token
-     * @param accessToken 当前用户的访问令牌
-     */
-    func bindWeChatProvider(providerToken: String, accessToken: String) async throws {
-        guard CloudBaseHTTPClient.hasPublishableKey else {
-            throw NSError(domain: "CloudBaseAuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
-        }
-        
-        let url = URL(string: "\(CloudBaseConfig.baseURL)/auth/v1/provider/bind")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        
-        let body: [String: Any] = [
-            "provider_token": providerToken
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        print("🔄 [CloudBaseAuth] 绑定微信账号...")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let httpResponse = response as? HTTPURLResponse
-        let statusCode = httpResponse?.statusCode ?? -1
-        
-        if statusCode != 200 {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            print("❌ [CloudBaseAuth] 绑定微信失败 HTTP \(statusCode): \(errorBody)")
-            throw NSError(domain: "CloudBaseAuthService", code: statusCode, userInfo: [NSLocalizedDescriptionKey: "绑定微信失败"])
-        }
-        
-        print("✅ [CloudBaseAuth] 微信账号绑定成功")
-    }
 }
 
 // MARK: - 响应数据结构
@@ -493,16 +280,6 @@ private struct SignInResponse: Codable {
     }
 }
 
-/// 微信授权页响应
-private struct ProviderRedirectUriResponse: Codable {
-    let uri: String
-}
-
-/// 微信 Token 响应
-private struct ProviderTokenResponse: Codable {
-    let provider_token: String
-}
-
 /// CloudBase 用户信息
 struct CloudBaseUser: Codable {
     let uid: String
@@ -514,7 +291,3 @@ struct CloudBaseUser: Codable {
     let updated_at: Int64?
 }
 
-/// CloudBase 认证错误
-enum CloudBaseAuthError: Error {
-    case userNotFound
-}

@@ -8,6 +8,7 @@
  */
 import SwiftUI
 import Combine
+import PhotosUI
 
 struct CommunityView: View {
     @EnvironmentObject var appState: AppState
@@ -21,7 +22,10 @@ struct CommunityView: View {
                 Color(uiColor: ColorPalette.bgPrimary)
                     .ignoresSafeArea()
                 
-                if viewModel.posts.isEmpty && !viewModel.isLoading {
+                if viewModel.posts.isEmpty && viewModel.isLoading {
+                    // 骨架屏加载
+                    skeletonView
+                } else if viewModel.posts.isEmpty && !viewModel.isLoading {
                     // 空状态
                     emptyStateView
                 } else {
@@ -40,7 +44,9 @@ struct CommunityView: View {
                 }
             }
             .sheet(isPresented: $viewModel.showComposePage) {
-                ComposePostView(viewModel: viewModel)
+                ComposePostView(onPublished: { _ in
+                    viewModel.onPostPublished()
+                })
             }
             .sheet(isPresented: $showLoginSheet) {
                 LoginView(isPresented: $showLoginSheet)
@@ -69,6 +75,19 @@ struct CommunityView: View {
         }
     }
     
+    /// 骨架屏加载视图
+    private var skeletonView: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                ForEach(0..<5, id: \.self) { _ in
+                    SkeletonPostCard()
+                        .padding(.horizontal, 16)
+                }
+            }
+            .padding(.vertical, 12)
+        }
+    }
+
     /// 空状态视图
     private var emptyStateView: some View {
         VStack(spacing: 20) {
@@ -138,12 +157,44 @@ struct CommunityView: View {
         .frame(maxWidth: .infinity)
     }
     
+    /// 排序切换栏
+    private var sortToggleBar: some View {
+        HStack(spacing: 0) {
+            ForEach(PostSortMode.allCases, id: \.self) { mode in
+                Button(action: { viewModel.switchSort(mode) }) {
+                    Text(mode.title)
+                        .font(.system(size: 14, weight: viewModel.sortMode == mode ? .semibold : .regular))
+                        .foregroundColor(
+                            viewModel.sortMode == mode
+                                ? Color(uiColor: ColorPalette.brandPrimary)
+                                : Color(uiColor: ColorPalette.textSecondary)
+                        )
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 16)
+                        .background(
+                            viewModel.sortMode == mode
+                                ? Color(uiColor: ColorPalette.brandPrimary).opacity(0.1)
+                                : Color.clear
+                        )
+                        .cornerRadius(16)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
     /// 帖子列表视图
     private var postListView: some View {
         ScrollView {
+            sortToggleBar
+
             LazyVStack(spacing: 12) {
                 ForEach(Array(viewModel.posts.enumerated()), id: \.element.id) { index, post in
-                    NavigationLink(destination: PostDetailView(post: post)) {
+                    NavigationLink(destination: PostDetailView(post: post, onCommentCountChanged: { newCount in
+                        viewModel.updateCommentCount(postId: post.id, count: newCount)
+                    })) {
                         PostCard(post: post, onLike: { handleLikeTap(post: post) })
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -188,197 +239,56 @@ struct CommunityView: View {
     }
 }
 
-/// 发布帖子页面
-struct ComposePostView: View {
-    @ObservedObject var viewModel: CommunityViewModel
-    @Environment(\.dismiss) var dismiss
-    
-    @State private var content: String = ""
-    @State private var tags: String = ""
-    @FocusState private var isContentFocused: Bool
-    
+/// 骨架屏帖子卡片
+private struct SkeletonPostCard: View {
+    @State private var isAnimating = false
+
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color(uiColor: ColorPalette.bgPrimary)
-                    .ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // 内容输入区域
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("分享你的交易心得")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
-                        
-                        ZStack(alignment: .topLeading) {
-                            // TextEditor 背景
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(uiColor: ColorPalette.bgSecondary))
-                                .stroke(
-                                    isContentFocused ? 
-                                        Color(uiColor: ColorPalette.brandPrimary) : 
-                                        Color(uiColor: ColorPalette.border),
-                                    lineWidth: isContentFocused ? 1.5 : 1
-                                )
-                            
-                            // 内容输入
-                            TextEditor(text: $content)
-                                .focused($isContentFocused)
-                                .font(.system(size: 16))
-                                .foregroundColor(Color(uiColor: ColorPalette.textPrimary))
-                                .padding(12)
-                                .background(Color.clear)
-                                .frame(minHeight: 180)
-                                .scrollContentBackground(.hidden)
-                            
-                            // Placeholder
-                            if content.isEmpty {
-                                Text("今天市场怎么样？聊聊你的操作和想法...")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
-                                    .padding(.top, 20)
-                                    .padding(.leading, 16)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                        .frame(height: 200)
-                        
-                        // 字数统计
-                        HStack {
-                            Spacer()
-                            Text("\(content.count)/500")
-                                .font(.system(size: 12))
-                                .foregroundColor(
-                                    content.count > 500 ? 
-                                        Color(uiColor: ColorPalette.error) : 
-                                        Color(uiColor: ColorPalette.textTertiary)
-                                )
-                        }
-                    }
-                    .padding(16)
-                    
-                    Divider()
-                        .background(Color(uiColor: ColorPalette.divider))
-                    
-                    // 标签输入区域
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Image(systemName: "number")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
-                            
-                            Text("添加话题标签")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
-                            
-                            Spacer()
-                            
-                            Text("用空格分隔")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
-                        }
-                        
-                        TextField("例如: 大盘 涨停 价值投资", text: $tags)
-                            .font(.system(size: 15))
-                            .foregroundColor(Color(uiColor: ColorPalette.textPrimary))
-                            .padding(12)
-                            .background(Color(uiColor: ColorPalette.bgSecondary))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color(uiColor: ColorPalette.border), lineWidth: 1)
-                            )
-                        
-                        // 快捷标签
-                        if !tags.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(parsedTags, id: \.self) { tag in
-                                        Text("#\(tag)")
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(Color(uiColor: ColorPalette.brandLight))
-                                            .cornerRadius(14)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(16)
-                    
-                    Spacer()
-                    
-                    // 发布按钮
-                    Button(action: publishPost) {
-                        HStack {
-                            if viewModel.isLoading {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text("发布心得")
-                                    .font(.system(size: 17, weight: .semibold))
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .foregroundColor(.white)
-                        .background(
-                            canPublish ? 
-                                Color(uiColor: ColorPalette.brandPrimary) : 
-                                Color(uiColor: ColorPalette.textDisabled)
-                        )
-                        .cornerRadius(12)
-                    }
-                    .disabled(!canPublish || viewModel.isLoading)
-                    .padding(16)
-                    .animation(.easeOut(duration: 0.2), value: canPublish)
+        VStack(alignment: .leading, spacing: 12) {
+            // 头部
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(Color(uiColor: ColorPalette.bgSecondary))
+                    .frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 4) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(uiColor: ColorPalette.bgSecondary))
+                        .frame(width: 80, height: 14)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(uiColor: ColorPalette.bgSecondary))
+                        .frame(width: 50, height: 10)
                 }
+                Spacer()
             }
-            .navigationTitle("发布心得")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .medium))
-                            Text("取消")
-                                .font(.system(size: 16))
-                        }
-                        .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
-                    }
-                }
+            // 内容行
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(uiColor: ColorPalette.bgSecondary))
+                    .frame(height: 14)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(uiColor: ColorPalette.bgSecondary))
+                    .frame(height: 14)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(uiColor: ColorPalette.bgSecondary))
+                    .frame(width: 200, height: 14)
+            }
+            // 底部操作栏
+            HStack(spacing: 24) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(uiColor: ColorPalette.bgSecondary))
+                    .frame(width: 40, height: 12)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(uiColor: ColorPalette.bgSecondary))
+                    .frame(width: 40, height: 12)
+                Spacer()
             }
         }
-        .onAppear {
-            // 自动聚焦输入框
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                isContentFocused = true
-            }
-        }
-    }
-    
-    /// 解析的标签列表
-    private var parsedTags: [String] {
-        tags
-            .split(separator: " ")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-    
-    /// 是否可以发布
-    private var canPublish: Bool {
-        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmedContent.isEmpty && trimmedContent.count <= 500
-    }
-    
-    /// 发布帖子
-    private func publishPost() {
-        viewModel.publishPost(content: content, images: [], tags: parsedTags)
+        .padding(16)
+        .background(Color(uiColor: ColorPalette.bgSecondary))
+        .cornerRadius(16)
+        .opacity(isAnimating ? 0.5 : 1.0)
+        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isAnimating)
+        .onAppear { isAnimating = true }
     }
 }
 

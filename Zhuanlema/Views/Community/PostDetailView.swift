@@ -5,23 +5,15 @@
 import SwiftUI
 
 struct PostDetailView: View {
-    let post: Post
+    @StateObject private var viewModel: PostDetailViewModel
     @EnvironmentObject var appState: AppState
-
-    @State private var commentCount: Int
-    @State private var comments: [Comment] = []
-    @State private var isLoadingComments = false
-    @State private var commentErrorMessage: String?
     @State private var draftComment = ""
-    @State private var isSendingComment = false
-    @State private var replyingTo: Comment?
 
-    private let commentRepository = CommentRepository()
-
-    init(post: Post) {
-        self.post = post
-        _commentCount = State(initialValue: post.commentCount)
+    init(post: Post, onCommentCountChanged: ((Int) -> Void)? = nil) {
+        _viewModel = StateObject(wrappedValue: PostDetailViewModel(post: post, onCommentCountChanged: onCommentCountChanged))
     }
+
+    private var post: Post { viewModel.post }
 
     private var displayNickname: String {
         post.nickname ?? post.user?.nickname ?? "匿名用户"
@@ -127,19 +119,27 @@ struct PostDetailView: View {
                 }
             }
         }
-        .onAppear { loadComments() }
+        .onAppear { viewModel.loadInitialComments() }
         .overlay(alignment: .bottom) {
             if appState.isLoggedIn {
                 commentInputBar
             }
         }
         .alert("评论失败", isPresented: Binding(
-            get: { commentErrorMessage != nil },
-            set: { if !$0 { commentErrorMessage = nil } }
+            get: { viewModel.commentErrorMessage != nil },
+            set: { if !$0 { viewModel.commentErrorMessage = nil } }
         )) {
-            Button("确定", role: .cancel) { commentErrorMessage = nil }
+            Button("确定", role: .cancel) { viewModel.commentErrorMessage = nil }
         } message: {
-            if let msg = commentErrorMessage { Text(msg) }
+            if let msg = viewModel.commentErrorMessage { Text(msg) }
+        }
+        .confirmationDialog("撤回评论？", isPresented: $viewModel.showDeleteConfirm, titleVisibility: .visible) {
+            Button("撤回", role: .destructive) {
+                if let c = viewModel.pendingDelete { viewModel.retract(comment: c) }
+            }
+            Button("取消", role: .cancel) { viewModel.pendingDelete = nil }
+        } message: {
+            Text("撤回后将显示“该评论已删除”")
         }
     }
 
@@ -149,14 +149,40 @@ struct PostDetailView: View {
                 Text("评论")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(Color(uiColor: ColorPalette.textPrimary))
-                Text("\(commentCount)")
+                Text("\(viewModel.commentCount)")
                     .font(.system(size: 14))
                     .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
+                Spacer()
+                // 评论排序切换
+                HStack(spacing: 0) {
+                    Button(action: { viewModel.switchCommentSort("latest") }) {
+                        Text("最新")
+                            .font(.system(size: 13, weight: viewModel.commentSortMode == "latest" ? .semibold : .regular))
+                            .foregroundColor(
+                                viewModel.commentSortMode == "latest"
+                                    ? Color(uiColor: ColorPalette.brandPrimary)
+                                    : Color(uiColor: ColorPalette.textTertiary)
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                    }
+                    Button(action: { viewModel.switchCommentSort("hot") }) {
+                        Text("最热")
+                            .font(.system(size: 13, weight: viewModel.commentSortMode == "hot" ? .semibold : .regular))
+                            .foregroundColor(
+                                viewModel.commentSortMode == "hot"
+                                    ? Color(uiColor: ColorPalette.brandPrimary)
+                                    : Color(uiColor: ColorPalette.textTertiary)
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            if isLoadingComments && comments.isEmpty {
+            if viewModel.isLoadingComments && viewModel.comments.isEmpty {
                 HStack {
                     Spacer()
                     ProgressView()
@@ -164,12 +190,12 @@ struct PostDetailView: View {
                     Spacer()
                 }
                 .padding(.vertical, 24)
-            } else if commentErrorMessage != nil && comments.isEmpty {
+            } else if viewModel.commentErrorMessage != nil && viewModel.comments.isEmpty {
                 VStack(spacing: 12) {
                     Text("评论加载失败")
                         .font(.system(size: 14))
                         .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
-                    Button(action: { commentErrorMessage = nil; loadComments() }) {
+                    Button(action: { viewModel.commentErrorMessage = nil; viewModel.loadInitialComments() }) {
                         Text("重试")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
@@ -177,33 +203,54 @@ struct PostDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
-            } else if comments.isEmpty {
+            } else if viewModel.comments.isEmpty {
                 Text("暂无评论，来说一句吧")
                     .font(.system(size: 14))
                     .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
             } else {
-                ForEach(topLevelComments) { comment in
+                ForEach(viewModel.topLevelComments) { comment in
                     VStack(spacing: 6) {
                         CommentRow(
                             comment: comment,
                             isReply: false,
-                            onReply: { replyingTo = comment },
-                            onLike: { toggleLike(comment: comment) }
+                            onReply: { viewModel.replyingTo = comment },
+                            onLike: { viewModel.toggleLike(comment: comment) },
+                            onCopy: { viewModel.copy(comment: comment) },
+                            onDelete: { viewModel.requestDelete(comment: comment) },
+                            canDelete: viewModel.canDelete(comment: comment, isLoggedIn: appState.isLoggedIn)
                         )
-                        ForEach(replies(for: comment)) { reply in
+                        ForEach(viewModel.replies(for: comment)) { reply in
                             CommentRow(
                                 comment: reply,
                                 isReply: true,
-                                onReply: { replyingTo = comment },
-                                onLike: { toggleLike(comment: reply) }
+                                onReply: { viewModel.replyingTo = reply },
+                                onLike: { viewModel.toggleLike(comment: reply) },
+                                onCopy: { viewModel.copy(comment: reply) },
+                                onDelete: { viewModel.requestDelete(comment: reply) },
+                                canDelete: viewModel.canDelete(comment: reply, isLoggedIn: appState.isLoggedIn)
                             )
                             .padding(.leading, 20)
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
+                    .onAppear {
+                        if comment.id == viewModel.topLevelComments.last?.id {
+                            viewModel.loadMoreComments()
+                        }
+                    }
+                }
+
+                if viewModel.isLoadingMoreComments {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color(uiColor: ColorPalette.brandPrimary)))
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
                 }
             }
         }
@@ -212,13 +259,13 @@ struct PostDetailView: View {
 
     private var commentInputBar: some View {
         VStack(spacing: 8) {
-            if let replying = replyingTo {
+            if let replying = viewModel.replyingTo {
                 HStack(spacing: 8) {
                     Text("回复 \(replying.nickname ?? "用户")")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
                     Spacer()
-                    Button("取消") { replyingTo = nil }
+                    Button("取消") { viewModel.replyingTo = nil }
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
                 }
@@ -226,102 +273,43 @@ struct PostDetailView: View {
             }
 
             HStack(spacing: 12) {
-            TextField("写一条评论...", text: $draftComment, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .lineLimit(1...4)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color(uiColor: ColorPalette.bgSecondary))
-                .cornerRadius(20)
-            Button(action: sendComment) {
-                if isSendingComment {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .frame(width: 36, height: 36)
-                } else {
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
+                TextField("写一条评论...", text: $draftComment, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 15))
+                    .lineLimit(1...4)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(uiColor: ColorPalette.bgSecondary))
+                    .cornerRadius(20)
+                Button(action: {
+                    let text = draftComment
+                    draftComment = ""
+                    viewModel.sendComment(text: text)
+                }) {
+                    if viewModel.isSendingComment {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(width: 36, height: 36)
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                    }
                 }
-            }
-            .background(
-                draftComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? Color(uiColor: ColorPalette.textDisabled)
-                    : Color(uiColor: ColorPalette.brandPrimary)
-            )
-            .clipShape(Circle())
-            .disabled(draftComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSendingComment)
+                .background(
+                    draftComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? Color(uiColor: ColorPalette.textDisabled)
+                        : Color(uiColor: ColorPalette.brandPrimary)
+                )
+                .clipShape(Circle())
+                .disabled(draftComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSendingComment)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
         .background(Color(uiColor: ColorPalette.bgPrimary))
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: -2)
-    }
-
-    private func loadComments() {
-        guard !isLoadingComments else { return }
-        isLoadingComments = true
-        commentErrorMessage = nil
-        Task {
-            do {
-                comments = try await commentRepository.getComments(postId: post.id, limit: 50, offset: 0)
-            } catch {
-                commentErrorMessage = error.localizedDescription
-            }
-            isLoadingComments = false
-        }
-    }
-
-    private func sendComment() {
-        let text = draftComment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSendingComment else { return }
-        isSendingComment = true
-        draftComment = ""
-        Task {
-            do {
-                let newCount = try await commentRepository.createComment(postId: post.id, content: text, parentId: replyingTo?.id)
-                commentCount = newCount
-                replyingTo = nil
-                loadComments()
-            } catch {
-                commentErrorMessage = error.localizedDescription
-            }
-            isSendingComment = false
-        }
-    }
-
-    private var topLevelComments: [Comment] {
-        comments
-            .filter { ($0.parentId ?? "").isEmpty }
-            .sorted { $0.createdAt < $1.createdAt }
-    }
-
-    private func replies(for parent: Comment) -> [Comment] {
-        comments
-            .filter { $0.parentId == parent.id }
-            .sorted { $0.createdAt < $1.createdAt }
-    }
-
-    private func toggleLike(comment: Comment) {
-        Task {
-            do {
-                let result: (commentId: String, likeCount: Int, isLiked: Bool)
-                if comment.isLiked {
-                    result = try await commentRepository.unlikeComment(commentId: comment.id)
-                } else {
-                    result = try await commentRepository.likeComment(commentId: comment.id)
-                }
-                if let idx = comments.firstIndex(where: { $0.id == result.commentId }) {
-                    comments[idx].likeCount = result.likeCount
-                    comments[idx].isLiked = result.isLiked
-                }
-            } catch {
-                commentErrorMessage = error.localizedDescription
-            }
-        }
     }
 }
 
@@ -331,6 +319,9 @@ struct CommentRow: View {
     let isReply: Bool
     let onReply: () -> Void
     let onLike: () -> Void
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    let canDelete: Bool
 
     private var displayName: String { comment.nickname ?? "用户" }
 
@@ -359,30 +350,44 @@ struct CommentRow: View {
                         .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
                 }
                 Spacer()
-                Button(action: onLike) {
-                    HStack(spacing: 4) {
-                        Image(systemName: comment.isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(comment.isLiked ? Color(uiColor: ColorPalette.brandPrimary) : Color(uiColor: ColorPalette.textSecondary))
-                        if comment.likeCount > 0 {
-                            Text("\(comment.likeCount)")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                if !comment.isDeleted {
+                    Button(action: onLike) {
+                        HStack(spacing: 4) {
+                            Image(systemName: comment.isLiked ? "heart.fill" : "heart")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(comment.isLiked ? Color(uiColor: ColorPalette.brandPrimary) : Color(uiColor: ColorPalette.textSecondary))
+                            if comment.likeCount > 0 {
+                                Text("\(comment.likeCount)")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                            }
                         }
                     }
                 }
             }
-            Text(comment.content)
-                .font(.system(size: 14))
-                .foregroundColor(Color(uiColor: ColorPalette.textPrimary))
-            Button("回复", action: onReply)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
+            if comment.isDeleted {
+                Text("该评论已删除")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
+            } else {
+                Text(comment.content)
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(uiColor: ColorPalette.textPrimary))
+                Button("回复", action: onReply)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color(uiColor: ColorPalette.bgSecondary))
         .cornerRadius(10)
+        .contextMenu {
+            Button("复制", action: onCopy)
+            if canDelete {
+                Button("撤回", role: .destructive, action: onDelete)
+            }
+        }
     }
 }
 

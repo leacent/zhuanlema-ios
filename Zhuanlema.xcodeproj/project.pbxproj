@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		33B018A82F280C9800D97847 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 33A0184F2F250C9800D97847 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 33A018562F250C9800D97847;
+			remoteInfo = Zhuanlema;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		33A018572F250C9800D97847 /* Zhuanlema.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Zhuanlema.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		33B018A02F280C9800D97847 /* ZhuanlemaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZhuanlemaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -29,10 +40,22 @@
 			path = Zhuanlema;
 			sourceTree = "<group>";
 		};
+		33B018A12F280C9800D97847 /* ZhuanlemaTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ZhuanlemaTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		33A018542F250C9800D97847 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		33B018A52F280C9800D97847 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +69,7 @@
 			isa = PBXGroup;
 			children = (
 				33A018592F250C9800D97847 /* Zhuanlema */,
+				33B018A12F280C9800D97847 /* ZhuanlemaTests */,
 				33A018582F250C9800D97847 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				33A018572F250C9800D97847 /* Zhuanlema.app */,
+				33B018A02F280C9800D97847 /* ZhuanlemaTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,6 +108,29 @@
 			productReference = 33A018572F250C9800D97847 /* Zhuanlema.app */;
 			productType = "com.apple.product-type.application";
 		};
+		33B018A32F280C9800D97847 /* ZhuanlemaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 33B018AB2F280C9800D97847 /* Build configuration list for PBXNativeTarget "ZhuanlemaTests" */;
+			buildPhases = (
+				33B018A42F280C9800D97847 /* Sources */,
+				33B018A52F280C9800D97847 /* Frameworks */,
+				33B018A62F280C9800D97847 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				33B018A72F280C9800D97847 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				33B018A12F280C9800D97847 /* ZhuanlemaTests */,
+			);
+			name = ZhuanlemaTests;
+			packageProductDependencies = (
+			);
+			productName = ZhuanlemaTests;
+			productReference = 33B018A02F280C9800D97847 /* ZhuanlemaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -95,6 +143,10 @@
 				TargetAttributes = {
 					33A018562F250C9800D97847 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					33B018A32F280C9800D97847 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 33A018562F250C9800D97847;
 					};
 				};
 			};
@@ -113,12 +165,20 @@
 			projectRoot = "";
 			targets = (
 				33A018562F250C9800D97847 /* Zhuanlema */,
+				33B018A32F280C9800D97847 /* ZhuanlemaTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		33A018552F250C9800D97847 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		33B018A62F280C9800D97847 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +195,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		33B018A42F280C9800D97847 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		33B018A72F280C9800D97847 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 33A018562F250C9800D97847 /* Zhuanlema */;
+			targetProxy = 33B018A82F280C9800D97847 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		33A018602F250C9A00D97847 /* Debug */ = {
@@ -329,6 +404,50 @@
 			};
 			name = Release;
 		};
+		33B018A92F280C9800D97847 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A7CUYL4797;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = leacent.ZhuanlemaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Zhuanlema.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Zhuanlema";
+			};
+			name = Debug;
+		};
+		33B018AA2F280C9800D97847 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A7CUYL4797;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = leacent.ZhuanlemaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Zhuanlema.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Zhuanlema";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -346,6 +465,15 @@
 			buildConfigurations = (
 				33A018632F250C9A00D97847 /* Debug */,
 				33A018642F250C9A00D97847 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		33B018AB2F280C9800D97847 /* Build configuration list for PBXNativeTarget "ZhuanlemaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				33B018A92F280C9800D97847 /* Debug */,
+				33B018AA2F280C9800D97847 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

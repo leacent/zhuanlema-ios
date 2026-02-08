@@ -39,10 +39,16 @@ class MarketViewModel: ObservableObject {
     /// 社区热点话题
     @Published var trendingTopics: [String] = []
     
+    /// 市场总览统计（赚钱比例、涨跌分布）
+    @Published var marketStats: MarketStats?
+    
     // MARK: - 自选数据
     
     /// 自选列表
     @Published var watchlist: [WatchlistItem] = []
+    
+    /// 自选股是否已加载过（懒加载标志）
+    private var watchlistLoaded: Bool = false
     
     // MARK: - 加载状态
     
@@ -72,6 +78,9 @@ class MarketViewModel: ObservableObject {
     /// 取消令牌
     private var cancellables = Set<AnyCancellable>()
     
+    /// 加载过程中收集的失败模块名称（用于汇总错误提示）
+    private var loadErrors: [String] = []
+    
     // MARK: - 初始化
     
     init() {
@@ -89,59 +98,50 @@ class MarketViewModel: ObservableObject {
         isSectorsLoading = true
         isHotStocksLoading = true
         errorMessage = nil
+        loadErrors = []
         
         // 并行加载多个数据源
         await withTaskGroup(of: Void.self) { group in
-            // 加载指数数据
-            group.addTask {
-                await self.loadIndices()
-            }
-            
-            // 加载行业板块
-            group.addTask {
-                await self.loadIndustrySectors()
-            }
-            
-            // 加载概念板块
-            group.addTask {
-                await self.loadConceptSectors()
-            }
-            
-            // 加载热门股票排行榜
-            group.addTask {
-                await self.loadHotStocks()
-            }
-            
-            // 加载社区话题
-            group.addTask {
-                await self.loadTrendingTopics()
-            }
-            
-            // 加载自选股（如果有）
-            group.addTask {
-                await self.loadWatchlist()
-            }
+            group.addTask { await self.loadIndices() }
+            group.addTask { await self.loadIndustrySectors() }
+            group.addTask { await self.loadConceptSectors() }
+            group.addTask { await self.loadHotStocks() }
+            group.addTask { await self.loadMarketStats() }
+            group.addTask { await self.loadTrendingTopics() }
+            // 注意：自选股使用懒加载，切换到自选 Tab 时才请求
         }
         
         isLoading = false
         isSectorsLoading = false
         isHotStocksLoading = false
+        
+        // 汇总错误提示
+        if !loadErrors.isEmpty {
+            let modules = loadErrors.joined(separator: "、")
+            errorMessage = "\(modules)加载失败，请下拉刷新重试"
+        }
     }
     
-    /// 下拉刷新
-    func refresh() {
+    /// 下拉刷新（async，可直接 await）
+    func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true
         errorMessage = nil
         
-        Task {
-            // 清除缓存
-            cache.clearAll()
-            
-            // 重新加载数据
-            await loadMarketData()
-            isRefreshing = false
+        // 清除缓存和懒加载标志
+        cache.clearAll()
+        watchlistLoaded = false
+        
+        // 重新加载数据
+        await loadMarketData()
+        
+        // 如果当前在自选 Tab，也刷新自选数据
+        if selectedTab == .watchlist {
+            watchlistLoaded = true
+            await loadWatchlist()
         }
+        
+        isRefreshing = false
     }
     
     /// 切换热门股票类型
@@ -159,13 +159,28 @@ class MarketViewModel: ObservableObject {
         }
     }
 
-    /// 切换 A股/港股/美股 时调用：重载指数、行业板块、概念板块、排行榜
+    /// 切换 A股/港股/美股 时调用：并行重载指数、行业板块、概念板块、排行榜
     func loadDataForSelectedRegion() async {
         hotStocksDisplayCount = 20
-        await loadIndices()
-        await loadIndustrySectors()
-        await loadConceptSectors()
-        await loadHotStocks()
+        isSectorsLoading = true
+        isHotStocksLoading = true
+        
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.loadIndices() }
+            group.addTask { await self.loadIndustrySectors() }
+            group.addTask { await self.loadConceptSectors() }
+            group.addTask { await self.loadHotStocks() }
+        }
+        
+        isSectorsLoading = false
+        isHotStocksLoading = false
+    }
+    
+    /// 懒加载自选股（首次切到自选 Tab 时调用）
+    func loadWatchlistIfNeeded() async {
+        guard !watchlistLoaded else { return }
+        watchlistLoaded = true
+        await loadWatchlist()
     }
     
     /// 根据 code 获取自选项
@@ -189,88 +204,87 @@ class MarketViewModel: ObservableObject {
         } catch {
             print("加载指数失败 (\(region.title)): \(error.localizedDescription)")
             indices = []
+            loadErrors.append("指数")
         }
     }
     
-    /// 加载行业板块（按当前选中市场）
+    /// 加载行业板块（按当前选中市场，带缓存）
     private func loadIndustrySectors() async {
         let region = selectedRegion
+        if let cached = cache.getCachedSectors(type: .industry, region: region) {
+            industrySectors = cached
+            return
+        }
         do {
-            industrySectors = try await marketDataService.fetchIndustrySectors(region: region)
+            let data = try await marketDataService.fetchIndustrySectors(region: region)
+            industrySectors = data
+            cache.setCachedSectors(data, type: .industry, region: region)
         } catch {
             print("加载行业板块失败 (\(region.title)): \(error.localizedDescription)")
             industrySectors = []
+            loadErrors.append("行业板块")
         }
     }
     
-    /// 加载概念板块（按当前选中市场）
+    /// 加载概念板块（按当前选中市场，带缓存）
     private func loadConceptSectors() async {
         let region = selectedRegion
+        if let cached = cache.getCachedSectors(type: .concept, region: region) {
+            conceptSectors = cached
+            return
+        }
         do {
-            conceptSectors = try await marketDataService.fetchConceptSectors(region: region)
+            let data = try await marketDataService.fetchConceptSectors(region: region)
+            conceptSectors = data
+            cache.setCachedSectors(data, type: .concept, region: region)
         } catch {
             print("加载概念板块失败 (\(region.title)): \(error.localizedDescription)")
             conceptSectors = []
+            loadErrors.append("概念板块")
         }
     }
     
-    /// 加载热门股票排行榜（按当前选中市场，东方财富全量）
+    /// 加载热门股票排行榜（按当前选中市场，带缓存）
+    /// Mock 回退逻辑统一在 MarketDataService 中处理
     private func loadHotStocks() async {
         isHotStocksLoading = true
         let region = selectedRegion
+        let type = hotStockType
+        if let cached = cache.getCachedHotStocks(type: type, region: region) {
+            hotStocks = cached
+            isHotStocksLoading = false
+            return
+        }
         do {
-            let data = try await marketDataService.fetchHotStocks(type: hotStockType, region: region)
-            hotStocks = data.isEmpty && region == .aShare ? getMockHotStocks() : data
+            let data = try await marketDataService.fetchHotStocks(type: type, region: region)
+            hotStocks = data
+            cache.setCachedHotStocks(data, type: type, region: region)
         } catch {
             print("加载热门股票失败 (\(region.title)): \(error.localizedDescription)")
-            hotStocks = region == .aShare ? getMockHotStocks() : []
+            hotStocks = []
+            loadErrors.append("热门榜单")
         }
         isHotStocksLoading = false
     }
     
-    /// 获取模拟热门股票数据
-    private func getMockHotStocks() -> [WatchlistItem] {
-        switch hotStockType {
-        case .gainers:
-            return [
-                WatchlistItem(id: "1", name: "贵州茅台", code: "sh600519", price: 1688.50, changePercent: 5.62, volume: 2_340_000),
-                WatchlistItem(id: "2", name: "五粮液", code: "sz000858", price: 156.32, changePercent: 4.89, volume: 5_120_000),
-                WatchlistItem(id: "3", name: "宁德时代", code: "sz300750", price: 218.45, changePercent: 4.25, volume: 8_900_000),
-                WatchlistItem(id: "4", name: "比亚迪", code: "sz002594", price: 256.78, changePercent: 3.98, volume: 6_780_000),
-                WatchlistItem(id: "5", name: "招商银行", code: "sh600036", price: 32.56, changePercent: 3.45, volume: 12_300_000),
-                WatchlistItem(id: "6", name: "中国平安", code: "sh601318", price: 48.90, changePercent: 2.89, volume: 18_900_000),
-                WatchlistItem(id: "7", name: "美的集团", code: "sz000333", price: 58.23, changePercent: 2.56, volume: 7_650_000),
-                WatchlistItem(id: "8", name: "隆基绿能", code: "sh601012", price: 28.45, changePercent: 2.12, volume: 9_870_000),
-                WatchlistItem(id: "9", name: "恒瑞医药", code: "sh600276", price: 42.36, changePercent: 1.89, volume: 4_560_000),
-                WatchlistItem(id: "10", name: "东方财富", code: "sz300059", price: 18.92, changePercent: 1.56, volume: 15_600_000)
-            ]
-        case .losers:
-            return [
-                WatchlistItem(id: "1", name: "工商银行", code: "sh601398", price: 4.85, changePercent: -2.42, volume: 45_600_000),
-                WatchlistItem(id: "2", name: "农业银行", code: "sh601288", price: 3.52, changePercent: -2.21, volume: 38_900_000),
-                WatchlistItem(id: "3", name: "建设银行", code: "sh601939", price: 6.28, changePercent: -1.89, volume: 28_700_000),
-                WatchlistItem(id: "4", name: "中国银行", code: "sh601988", price: 3.68, changePercent: -1.61, volume: 32_400_000),
-                WatchlistItem(id: "5", name: "中国石油", code: "sh601857", price: 7.85, changePercent: -1.38, volume: 25_600_000),
-                WatchlistItem(id: "6", name: "中国石化", code: "sh600028", price: 5.12, changePercent: -1.15, volume: 18_900_000),
-                WatchlistItem(id: "7", name: "中国神华", code: "sh601088", price: 32.45, changePercent: -0.92, volume: 8_760_000),
-                WatchlistItem(id: "8", name: "长江电力", code: "sh600900", price: 25.68, changePercent: -0.78, volume: 6_540_000),
-                WatchlistItem(id: "9", name: "中国建筑", code: "sh601668", price: 5.62, changePercent: -0.53, volume: 15_200_000),
-                WatchlistItem(id: "10", name: "中国电建", code: "sh601669", price: 4.28, changePercent: -0.46, volume: 12_300_000)
-            ]
-        case .active:
-            return [
-                WatchlistItem(id: "1", name: "东方财富", code: "sz300059", price: 18.92, changePercent: 1.56, volume: 156_000_000),
-                WatchlistItem(id: "2", name: "工商银行", code: "sh601398", price: 4.85, changePercent: -0.42, volume: 145_600_000),
-                WatchlistItem(id: "3", name: "比亚迪", code: "sz002594", price: 256.78, changePercent: 3.98, volume: 98_700_000),
-                WatchlistItem(id: "4", name: "宁德时代", code: "sz300750", price: 218.45, changePercent: 4.25, volume: 89_000_000),
-                WatchlistItem(id: "5", name: "中国平安", code: "sh601318", price: 48.90, changePercent: 2.89, volume: 78_900_000),
-                WatchlistItem(id: "6", name: "招商银行", code: "sh600036", price: 32.56, changePercent: 3.45, volume: 72_300_000),
-                WatchlistItem(id: "7", name: "贵州茅台", code: "sh600519", price: 1688.50, changePercent: 5.62, volume: 65_400_000),
-                WatchlistItem(id: "8", name: "立讯精密", code: "sz002475", price: 28.56, changePercent: 2.12, volume: 58_700_000),
-                WatchlistItem(id: "9", name: "美的集团", code: "sz000333", price: 58.23, changePercent: 2.56, volume: 52_600_000),
-                WatchlistItem(id: "10", name: "隆基绿能", code: "sh601012", price: 28.45, changePercent: 2.12, volume: 48_700_000)
-            ]
+    /// 加载市场总览统计（赚钱比例、涨跌分布）
+    private func loadMarketStats() async {
+        // 优先使用缓存
+        if let cached = cache.getCachedStats() {
+            marketStats = cached
+            return
         }
+        // TODO: 接入 CloudBase 云函数获取真实市场统计（getTodayCheckInStats 或行情统计 API）
+        // 目前使用模拟数据
+        let stats = MarketStats(
+            upCount: 2733,
+            downCount: 1336,
+            flatCount: 135,
+            totalVolume: "31,184亿",
+            winRate: 0.62
+        )
+        marketStats = stats
+        cache.setCachedStats(stats)
     }
     
     /// 加载社区热点话题

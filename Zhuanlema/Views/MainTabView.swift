@@ -6,15 +6,14 @@ import SwiftUI
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
-    @State private var selectedTab = 0
     
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $appState.selectedMainTab) {
             // 社区（首页）
             CommunityView()
                 .environmentObject(appState)
                 .tabItem {
-                    Image(systemName: selectedTab == 0 ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
+                    Image(systemName: appState.selectedMainTab == 0 ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right")
                     Text("社区")
                 }
                 .tag(0)
@@ -23,7 +22,7 @@ struct MainTabView: View {
             MarketView()
                 .environmentObject(appState)
                 .tabItem {
-                    Image(systemName: selectedTab == 1 ? "chart.line.uptrend.xyaxis.circle.fill" : "chart.line.uptrend.xyaxis.circle")
+                    Image(systemName: appState.selectedMainTab == 1 ? "chart.line.uptrend.xyaxis.circle.fill" : "chart.line.uptrend.xyaxis.circle")
                     Text("行情")
                 }
                 .tag(1)
@@ -32,7 +31,7 @@ struct MainTabView: View {
             ProfileView()
                 .environmentObject(appState)
                 .tabItem {
-                    Image(systemName: selectedTab == 2 ? "person.fill" : "person")
+                    Image(systemName: appState.selectedMainTab == 2 ? "person.fill" : "person")
                     Text("我的")
                 }
                 .tag(2)

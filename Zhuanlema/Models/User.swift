@@ -29,7 +29,7 @@ struct User: Codable, Identifiable {
         self.id = cloudBaseUser.uid
         self.phoneNumber = cloudBaseUser.phone_number?.replacingOccurrences(of: "+86 ", with: "")
         self.nickname = cloudBaseUser.nickname ?? "用户\(cloudBaseUser.uid.prefix(4))"
-        self.avatar = cloudBaseUser.avatar ?? "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132"
+        self.avatar = cloudBaseUser.avatar ?? ""
         
         if let timestamp = cloudBaseUser.created_at {
             self.createdAt = Date(timeIntervalSince1970: TimeInterval(timestamp))

@@ -230,15 +230,16 @@ class CloudBaseDatabaseService {
     }
     
     /**
-     * 获取帖子列表（通过 HTTP API + Publishable Key）
+     * 获取帖子列表（通过 HTTP API + Publishable Key，游标分页）
      * 若传入 accessToken，云函数会返回 likedPostIds，并合并进 post.isLiked
      *
      * @param limit 每页数量
-     * @param offset 偏移量
+     * @param sortBy 排序方式："latest"（最新）或 "hot"（热度）
+     * @param cursor 游标值；首页传 nil，加载更多传上一页返回的 nextCursor
      * @param accessToken 可选；登录用户 token 用于拉取当前用户点赞状态
-     * @returns 帖子列表
+     * @returns 帖子列表和下一页游标
      */
-    func getPosts(limit: Int = 20, offset: Int = 0, accessToken: String? = nil) async throws -> [Post] {
+    func getPosts(limit: Int = 20, sortBy: String = "latest", cursor: Double? = nil, accessToken: String? = nil) async throws -> (posts: [Post], nextCursor: Double?) {
         guard CloudBaseHTTPClient.hasPublishableKey else {
             let msg = "请在 CloudBaseConfig 中配置 Publishable Key（云开发控制台 → ApiKey 管理）"
             print("❌ [CloudBaseDatabaseService] \(msg)")
@@ -248,9 +249,13 @@ class CloudBaseDatabaseService {
         struct PostsData: Codable {
             let posts: [Post]
             let likedPostIds: [String]?
+            let nextCursor: Double?
         }
 
-        var body: [String: Any] = ["limit": limit, "offset": offset]
+        var body: [String: Any] = ["limit": limit, "sortBy": sortBy]
+        if let cursor = cursor {
+            body["cursor"] = cursor
+        }
         if let token = accessToken, !token.isEmpty {
             body["access_token"] = token
         }
@@ -268,20 +273,20 @@ class CloudBaseDatabaseService {
             posts[i].isLiked = likedSet.contains(posts[i].id)
         }
         print("✅ [CloudBaseDatabaseService] getPosts 成功，获取到 \(posts.count) 条帖子")
-        return posts
+        return (posts, data.nextCursor)
     }
     
     /**
-     * 创建帖子
-     * 通过 CloudBase 网关调用云函数 createPost（Publishable Key 鉴权）
+     * 创建帖子（需登录）
+     * 通过 CloudBase 网关调用云函数 createPost（Publishable Key + access_token 鉴权）
      *
-     * @param userId 用户ID（云函数从运行态/网关解析，此处保留参数以兼容调用方）
      * @param content 内容
      * @param images 图片URL列表
      * @param tags 标签列表
+     * @param accessToken 用户 token
      * @returns 帖子ID
      */
-    func createPost(userId: String, content: String, images: [String], tags: [String]) async throws -> String {
+    func createPost(content: String, images: [String], tags: [String], accessToken: String) async throws -> String {
         guard CloudBaseHTTPClient.hasPublishableKey else {
             throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
         }
@@ -293,11 +298,28 @@ class CloudBaseDatabaseService {
             "images": images,
             "tags": tags
         ]
-        let result: CloudFunctionResponse<CreatePostData> = try await CloudBaseHTTPClient.call(name: "createPost", body: body)
+        let result: CloudFunctionResponse<CreatePostData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "createPost", body: body, accessToken: accessToken)
         guard result.success, let postData = result.data else {
             throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "发布失败"])
         }
         return postData.postId
+    }
+
+    /**
+     * 删除帖子（软删除，需登录）
+     *
+     * @param postId 帖子 ID
+     * @param accessToken 用户 token
+     */
+    func deletePost(postId: String, accessToken: String) async throws {
+        struct DeletePostData: Codable {
+            let postId: String
+        }
+        let body: [String: Any] = ["postId": postId]
+        let result: CloudFunctionResponse<DeletePostData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "deletePost", body: body, accessToken: accessToken)
+        guard result.success else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "删除帖子失败"])
+        }
     }
 
     /// 点赞 / 取消点赞 云函数返回
@@ -341,7 +363,7 @@ class CloudBaseDatabaseService {
     /**
      * 获取帖子评论列表
      */
-    func getComments(postId: String, limit: Int = 20, offset: Int = 0, accessToken: String? = nil) async throws -> [Comment] {
+    func getComments(postId: String, limit: Int = 20, offset: Int = 0, sortBy: String = "latest", accessToken: String? = nil) async throws -> [Comment] {
         guard CloudBaseHTTPClient.hasPublishableKey else {
             throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
         }
@@ -349,13 +371,20 @@ class CloudBaseDatabaseService {
             let comments: [Comment]
             let likedCommentIds: [String]?
         }
-        var body: [String: Any] = ["postId": postId, "limit": limit, "offset": offset]
+        var body: [String: Any] = ["postId": postId, "limit": limit, "offset": offset, "sortBy": sortBy]
         if let token = accessToken, !token.isEmpty {
             body["access_token"] = token
         }
         let result: CloudFunctionResponse<CommentsData> = try await CloudBaseHTTPClient.call(name: "getComments", body: body)
         guard result.success, let data = result.data else {
-            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "获取评论失败"])
+            let message = result.message ?? "获取评论失败"
+            if message.contains("not exist")
+                || message.contains("ResourceNotFound")
+                || message.contains("DATABASE_COLLECTION_NOT_EXIST")
+                || message.contains("comments") {
+                return []
+            }
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: message])
         }
         var comments = data.comments
         let likedSet = Set(data.likedCommentIds ?? [])
@@ -394,6 +423,12 @@ class CloudBaseDatabaseService {
         let isLiked: Bool
     }
 
+    /// 评论撤回云函数返回
+    struct DeleteCommentResultData: Codable {
+        let commentId: String
+        let commentCount: Int?
+    }
+
     /// 点赞评论（需登录）
     func likeComment(commentId: String, accessToken: String) async throws -> (commentId: String, likeCount: Int, isLiked: Bool) {
         guard CloudBaseHTTPClient.hasPublishableKey else {
@@ -418,6 +453,19 @@ class CloudBaseDatabaseService {
             throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "取消点赞评论失败"])
         }
         return (data.commentId, data.likeCount, data.isLiked)
+    }
+
+    /// 撤回/删除评论（需登录，仅本人可操作）
+    func deleteComment(commentId: String, accessToken: String) async throws -> (commentId: String, commentCount: Int?) {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        let body: [String: Any] = ["commentId": commentId]
+        let result: CloudFunctionResponse<DeleteCommentResultData> = try await CloudBaseHTTPClient.callWithUserTokenInBody(name: "deleteComment", body: body, accessToken: accessToken)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "撤回失败"])
+        }
+        return (data.commentId, data.commentCount)
     }
 
     // MARK: - 行情数据

@@ -26,7 +26,6 @@ enum MarketDataError: LocalizedError {
     }
 }
 
-@MainActor
 class MarketDataService {
     
     /// 单例

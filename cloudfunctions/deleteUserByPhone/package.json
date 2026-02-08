@@ -1,0 +1,9 @@
+{
+  "name": "deleteUserByPhone",
+  "version": "1.0.0",
+  "description": "Delete user and associated data by phone number (admin utility)",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

@@ -64,10 +64,12 @@ struct SectorGridView: View {
                 // 网格布局
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(sectors.prefix(6)) { sector in
-                        SectorCard(sector: sector)
-                            .onTapGesture {
-                                onSectorTap(sector)
-                            }
+                        Button {
+                            onSectorTap(sector)
+                        } label: {
+                            SectorCard(sector: sector)
+                        }
+                        .buttonStyle(ScalePressButtonStyle())
                     }
                 }
                 .padding(.horizontal, 16)
@@ -79,11 +81,9 @@ struct SectorGridView: View {
     }
 }
 
-/// 板块卡片
+/// 板块卡片（纯展示，点击行为由外层 Button 控制）
 struct SectorCard: View {
     let sector: SectorItem
-    
-    @State private var isPressed = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -130,18 +130,15 @@ struct SectorCard: View {
         .padding(12)
         .background(Color(uiColor: ColorPalette.bgTertiary))
         .cornerRadius(8)
-        .scaleEffect(isPressed ? 0.98 : 1.0)
-        .animation(.easeOut(duration: 0.1), value: isPressed)
-        .onTapGesture {
-            withAnimation {
-                isPressed = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation {
-                    isPressed = false
-                }
-            }
-        }
+    }
+}
+
+/// 通用的按压缩放按钮样式
+struct ScalePressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

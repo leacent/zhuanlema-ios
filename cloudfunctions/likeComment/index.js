@@ -3,28 +3,11 @@
  * 写入 comment_likes，并增加 post_comments.likeCount
  */
 const cloud = require("@cloudbase/node-sdk");
+const { resolveUserId } = require("./shared-utils");
 
 const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
 const db = app.database();
 const auth = app.auth();
-
-function getUserIdFromEvent(event) {
-  const token =
-    event?.access_token ??
-    event?.body?.access_token ??
-    (typeof event?.body === "string" ? (() => { try { return JSON.parse(event.body).access_token; } catch (_) { return null; } })() : null);
-  if (!token || typeof token !== "string") return null;
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    if (b64.length % 4) b64 += "=".repeat(4 - (b64.length % 4));
-    const payload = JSON.parse(Buffer.from(b64, "base64").toString());
-    return payload.sub || null;
-  } catch (_) {
-    return null;
-  }
-}
 
 exports.main = async (event) => {
   const commentId = event?.commentId ?? event?.body?.commentId;
@@ -32,12 +15,7 @@ exports.main = async (event) => {
     return { success: false, message: "缺少 commentId" };
   }
 
-  let userId;
-  try {
-    const { uid, customUserId } = auth.getUserInfo();
-    userId = customUserId || uid;
-  } catch (_) {}
-  if (!userId) userId = getUserIdFromEvent(event);
+  const userId = resolveUserId(auth, event);
   if (!userId) {
     return { success: false, message: "未登录" };
   }
@@ -58,9 +36,13 @@ exports.main = async (event) => {
 
     await likesCol.add({ commentId, postId, userId, createdAt: Date.now() });
 
-    const currentCount = (raw && typeof raw.likeCount === "number") ? raw.likeCount : 0;
-    const newCount = currentCount + 1;
-    await commentRef.update({ likeCount: newCount });
+    const _ = db.command;
+    await commentRef.update({ likeCount: _.inc(1) });
+
+    // 读取更新后的真实值
+    const updated = await commentRef.get();
+    const updatedRaw = Array.isArray(updated.data) && updated.data.length > 0 ? updated.data[0] : updated.data;
+    const newCount = (updatedRaw && typeof updatedRaw.likeCount === "number") ? updatedRaw.likeCount : 1;
 
     return { success: true, data: { commentId, likeCount: newCount, isLiked: true } };
   } catch (e) {

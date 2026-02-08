@@ -53,11 +53,16 @@ struct ZhuanlemaApp: App {
 class AppState: ObservableObject {
     @Published var isLoggedIn: Bool = false
     @Published var hasCheckedInToday: Bool = false
+    /// 底部 Tab 选中索引（0=社区, 1=行情, 2=我的）
+    @Published var selectedMainTab: Int = 0
     
     private let userRepository = UserRepository()
     private let checkInRepository = CheckInRepository()
     
     init() {
+        // 一次性迁移：将 UserDefaults 中的旧 token 迁移到 Keychain
+        KeychainService.shared.migrateTokenFromUserDefaults()
+
         // 🔧 开发调试：清除打卡缓存
         #if DEBUG
         checkInRepository.clearLocalCheckInCache()

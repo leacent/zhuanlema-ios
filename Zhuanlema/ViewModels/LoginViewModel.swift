@@ -1,10 +1,9 @@
 /**
  * 登录视图模型
- * 支持短信验证码登录和微信授权登录
+ * 支持短信验证码登录，用户不存在时自动注册
  */
 import Foundation
 import Combine
-import UIKit
 
 @MainActor
 class LoginViewModel: ObservableObject {
@@ -26,7 +25,7 @@ class LoginViewModel: ObservableObject {
     @Published var verificationId: String?
     
     private let userRepository = UserRepository()
-    private var countdownTimer: Timer?
+    private var countdownTask: Task<Void, Never>?
     
     /// 手机号格式是否正确
     var isPhoneNumberValid: Bool {
@@ -105,122 +104,23 @@ class LoginViewModel: ObservableObject {
         }
     }
     
-    // MARK: - 微信授权登录
-    
     /**
-     * 微信登录
-     */
-    func loginWithWeChat() {
-        guard !isLoading else { return }
-        
-        isLoading = true
-        errorMessage = nil
-        
-        Task {
-            do {
-                // 生成重定向 URI（iOS 使用 URL Scheme）
-                let redirectUri = "zhuanlema://wechat/callback"
-                let state = UUID().uuidString
-                
-                // 生成授权页 URL
-                let authUrl = try await userRepository.genWeChatRedirectUri(
-                    redirectUri: redirectUri,
-                    state: state
-                )
-                
-                // 打开微信授权页（需要在 Info.plist 配置 URL Scheme）
-                if let url = URL(string: authUrl) {
-                    await UIApplication.shared.open(url)
-                } else {
-                    throw NSError(domain: "LoginViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "无法打开授权页"])
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-                isLoading = false
-            }
-        }
-    }
-    
-    /**
-     * 处理微信授权回调
-     * 从 URL Scheme 回调中获取 code 和 state
-     */
-    func handleWeChatCallback(url: URL) {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let queryItems = components.queryItems else {
-            errorMessage = "授权回调参数错误"
-            isLoading = false
-            return
-        }
-        
-        var code: String?
-        var state: String?
-        
-        for item in queryItems {
-            if item.name == "code" {
-                code = item.value
-            } else if item.name == "state" {
-                state = item.value
-            }
-        }
-        
-        guard let providerCode = code else {
-            errorMessage = "未获取到授权码"
-            isLoading = false
-            return
-        }
-        
-        Task {
-            do {
-                // 获取微信授权 Token
-                let redirectUri = "zhuanlema://wechat/callback"
-                let providerToken = try await userRepository.grantWeChatToken(
-                    providerCode: providerCode,
-                    redirectUri: redirectUri
-                )
-                
-                // 使用 Token 登录
-                do {
-                    _ = try await userRepository.signInWithWeChat(providerToken: providerToken)
-                    
-                    // 登录成功
-                    isLoggedIn = true
-                    NotificationCenter.default.post(name: .userDidLogin, object: nil)
-                } catch UserRepositoryError.userNotFound {
-                    // 用户不存在，需要先注册（使用短信验证码注册）
-                    errorMessage = "首次使用微信登录，请先使用手机号注册"
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            
-            isLoading = false
-        }
-    }
-    
-    /**
-     * 开始倒计时
+     * 开始倒计时（使用 Task 替代 Timer，避免 @MainActor deinit 内存问题）
      */
     private func startCountdown() {
         countdown = 60
         
-        countdownTimer?.invalidate()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                if self.countdown > 0 {
-                    self.countdown -= 1
-                } else {
-                    self.countdownTimer?.invalidate()
-                    self.countdownTimer = nil
-                }
+        countdownTask?.cancel()
+        countdownTask = Task { [weak self] in
+            while let self, self.countdown > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { break }
+                self.countdown -= 1
             }
         }
     }
     
     deinit {
-        countdownTimer?.invalidate()
+        countdownTask?.cancel()
     }
 }

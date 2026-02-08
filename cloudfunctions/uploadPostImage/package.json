@@ -1,0 +1,9 @@
+{
+  "name": "uploadPostImage",
+  "version": "1.0.0",
+  "description": "上传帖子图片",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

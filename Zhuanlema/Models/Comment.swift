@@ -20,6 +20,10 @@ struct Comment: Codable, Identifiable {
     var likeCount: Int
     /// 当前用户是否已点赞（扩展字段，本地合并）
     var isLiked: Bool = false
+    /// 是否已撤回/删除（软删除）
+    var isDeleted: Bool = false
+    /// 删除时间（毫秒时间戳）
+    var deletedAt: Double?
     let createdAt: Double
 
     enum CodingKeys: String, CodingKey {
@@ -32,6 +36,8 @@ struct Comment: Codable, Identifiable {
         case replyToCommentId
         case replyToNickname
         case likeCount
+        case isDeleted
+        case deletedAt
         case createdAt
     }
 
@@ -46,10 +52,12 @@ struct Comment: Codable, Identifiable {
         replyToCommentId = try c.decodeIfPresent(String.self, forKey: .replyToCommentId)
         replyToNickname = try c.decodeIfPresent(String.self, forKey: .replyToNickname)
         likeCount = try c.decodeIfPresent(Int.self, forKey: .likeCount) ?? 0
+        isDeleted = try c.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
+        deletedAt = try c.decodeIfPresent(Double.self, forKey: .deletedAt)
         createdAt = try c.decode(Double.self, forKey: .createdAt)
     }
 
-    init(id: String, postId: String, userId: String, content: String, nickname: String?, parentId: String? = nil, replyToCommentId: String? = nil, replyToNickname: String? = nil, likeCount: Int = 0, isLiked: Bool = false, createdAt: Double) {
+    init(id: String, postId: String, userId: String, content: String, nickname: String?, parentId: String? = nil, replyToCommentId: String? = nil, replyToNickname: String? = nil, likeCount: Int = 0, isLiked: Bool = false, isDeleted: Bool = false, deletedAt: Double? = nil, createdAt: Double) {
         self.id = id
         self.postId = postId
         self.userId = userId
@@ -60,6 +68,8 @@ struct Comment: Codable, Identifiable {
         self.replyToNickname = replyToNickname
         self.likeCount = likeCount
         self.isLiked = isLiked
+        self.isDeleted = isDeleted
+        self.deletedAt = deletedAt
         self.createdAt = createdAt
     }
 }

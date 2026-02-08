@@ -11,6 +11,8 @@ struct MarketView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel = MarketViewModel()
     @State private var showStockSearch = false
+    /// 当前选中的股票（用于导航到详情页）
+    @State private var selectedStock: WatchlistItem?
 
     var body: some View {
         NavigationView {
@@ -43,6 +45,13 @@ struct MarketView: View {
                             .tag(MarketTab.watchlist)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .onChange(of: viewModel.selectedTab) { newTab in
+                        if newTab == .watchlist {
+                            Task {
+                                await viewModel.loadWatchlistIfNeeded()
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle("行情")
@@ -57,12 +66,28 @@ struct MarketView: View {
                     .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
                 }
             }
+            .background(
+                // 隐藏的 NavigationLink，用于程序式导航到个股详情
+                NavigationLink(
+                    destination: Group {
+                        if let stock = selectedStock {
+                            StockDetailView(item: stock)
+                        }
+                    },
+                    isActive: Binding(
+                        get: { selectedStock != nil },
+                        set: { if !$0 { selectedStock = nil } }
+                    ),
+                    label: { EmptyView() }
+                )
+                .hidden()
+            )
             .tint(Color(uiColor: ColorPalette.brandPrimary))
             .fullScreenCover(isPresented: $showStockSearch) {
                 StockSearchView()
             }
             .refreshable {
-                await refreshAsync()
+                await viewModel.refresh()
             }
             .alert("加载失败", isPresented: Binding(
                 get: { viewModel.errorMessage != nil },
@@ -82,81 +107,95 @@ struct MarketView: View {
     // MARK: - 行情Tab内容
 
     private var marketTabContent: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // 1. 大盘指数（按当前区域：A股/港股/美股）
-                indicesSection
-                    .padding(.top, 12)
-                
-                // 2. 快捷功能入口
-                QuickActionsView(
-                    onRankingTap: handleRankingTap,
-                    onDiscussionTap: handleDiscussionTap,
-                    onNewsTap: handleNewsTap,
-                    onAddWatchlistTap: handleAddWatchlistTap
-                )
-                .padding(.horizontal, 16)
-                
-                // 3. 社区热点（移至此位置，可选展示）
-                if !viewModel.trendingTopics.isEmpty {
-                    TrendingTopicsView(
-                        topics: viewModel.trendingTopics,
-                        onTopicTap: handleTopicTap
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 16) {
+                    // 0. 市场总览卡片（赚钱比例 & 涨跌分布）
+                    if viewModel.selectedRegion == .aShare {
+                        MarketOverviewCard(stats: viewModel.marketStats)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                    }
+                    
+                    // 1. 大盘指数（按当前区域：A股/港股/美股）
+                    indicesSection
+                        .padding(.top, viewModel.selectedRegion == .aShare ? 0 : 12)
+                    
+                    // 2. 快捷功能入口
+                    QuickActionsView(
+                        onRankingTap: {
+                            withAnimation {
+                                proxy.scrollTo("hotStocksSection", anchor: .top)
+                            }
+                        },
+                        onDiscussionTap: handleDiscussionTap,
+                        onNewsTap: handleNewsTap,
+                        onAddWatchlistTap: handleAddWatchlistTap
                     )
                     .padding(.horizontal, 16)
-                }
-                
-                // 4. 行业板块
-                NavigationLink(destination: SectorListView(
-                    title: "行业板块",
-                    sectorType: .industry,
-                    sectors: viewModel.industrySectors
-                )) {
-                    SectorGridView(
+                    
+                    // 3. 社区热点（移至此位置，可选展示）
+                    if !viewModel.trendingTopics.isEmpty {
+                        TrendingTopicsView(
+                            topics: viewModel.trendingTopics,
+                            onTopicTap: handleTopicTap
+                        )
+                        .padding(.horizontal, 16)
+                    }
+                    
+                    // 4. 行业板块
+                    NavigationLink(destination: SectorListView(
                         title: "行业板块",
-                        sectors: viewModel.industrySectors,
-                        isLoading: viewModel.isSectorsLoading,
-                        onSectorTap: handleSectorTap,
-                        onMoreTap: {}
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                
-                // 5. 概念板块
-                NavigationLink(destination: SectorListView(
-                    title: "概念板块",
-                    sectorType: .concept,
-                    sectors: viewModel.conceptSectors
-                )) {
-                    SectorGridView(
+                        sectorType: .industry,
+                        sectors: viewModel.industrySectors
+                    )) {
+                        SectorGridView(
+                            title: "行业板块",
+                            sectors: viewModel.industrySectors,
+                            isLoading: viewModel.isSectorsLoading,
+                            onSectorTap: handleSectorTap,
+                            onMoreTap: {}
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    
+                    // 5. 概念板块
+                    NavigationLink(destination: SectorListView(
                         title: "概念板块",
-                        sectors: viewModel.conceptSectors,
-                        isLoading: viewModel.isSectorsLoading,
-                        onSectorTap: handleSectorTap,
-                        onMoreTap: {}
+                        sectorType: .concept,
+                        sectors: viewModel.conceptSectors
+                    )) {
+                        SectorGridView(
+                            title: "概念板块",
+                            sectors: viewModel.conceptSectors,
+                            isLoading: viewModel.isSectorsLoading,
+                            onSectorTap: handleSectorTap,
+                            onMoreTap: {}
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    
+                    // 6. 热门股票榜单（全量，上拉加载更多）
+                    HotStocksView(
+                        selectedType: $viewModel.hotStockType,
+                        stocks: viewModel.hotStocks,
+                        displayCount: viewModel.hotStocksDisplayCount,
+                        isLoading: viewModel.isHotStocksLoading,
+                        onStockTap: handleStockTap,
+                        onLoadMore: viewModel.loadMoreHotStocks
                     )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                
-                // 6. 热门股票榜单（全量，上拉加载更多）
-                HotStocksView(
-                    selectedType: $viewModel.hotStockType,
-                    stocks: viewModel.hotStocks,
-                    displayCount: viewModel.hotStocksDisplayCount,
-                    isLoading: viewModel.isHotStocksLoading,
-                    onStockTap: handleStockTap,
-                    onLoadMore: viewModel.loadMoreHotStocks
-                )
-                .padding(.horizontal, 16)
-                .onChange(of: viewModel.hotStockType) { newType in
-                    Task {
-                        await viewModel.switchHotStockType(newType)
+                    .id("hotStocksSection")
+                    .padding(.horizontal, 16)
+                    .onChange(of: viewModel.hotStockType) { newType in
+                        Task {
+                            await viewModel.switchHotStockType(newType)
+                        }
                     }
                 }
+                .padding(.bottom, 24)
             }
-            .padding(.bottom, 24)
         }
     }
     
@@ -234,58 +273,42 @@ struct MarketView: View {
     
     // MARK: - 事件处理
     
-    /// 处理榜单点击
-    private func handleRankingTap() {
-        // 滚动到热门榜单区域
-        print("滚动到榜单区域")
-    }
-    
-    /// 处理讨论点击
+    /// 处理讨论点击 → 切换到社区 Tab
     private func handleDiscussionTap() {
-        // 跳转到社区页
-        print("跳转到社区")
-    }
-    
-    /// 处理资讯点击
-    private func handleNewsTap() {
-        // 打开财经资讯页面
-        print("打开财经资讯")
-    }
-    
-    /// 处理添加自选点击
-    private func handleAddWatchlistTap() {
-        // 切换到自选Tab
         withAnimation {
-            viewModel.selectedTab = .watchlist
+            appState.selectedMainTab = 0
         }
-        print("添加自选")
     }
     
-    /// 处理话题点击
+    /// 处理资讯点击（功能待开发，打开搜索页作为临时替代）
+    private func handleNewsTap() {
+        // TODO: 后续接入财经资讯页面
+        showStockSearch = true
+    }
+    
+    /// 处理添加自选点击 → 打开搜索页以搜索并添加自选
+    private func handleAddWatchlistTap() {
+        showStockSearch = true
+    }
+    
+    /// 处理话题点击 → 跳转到社区 Tab
     private func handleTopicTap(_ topic: String) {
-        // 跳转到社区，筛选该话题的帖子
-        print("查看话题: \(topic)")
-    }
-    
-    /// 处理股票点击
-    private func handleStockTap(_ stock: WatchlistItem) {
-        // 进入个股详情页
-        print("查看股票: \(stock.name)")
-    }
-    
-    /// 处理板块点击
-    private func handleSectorTap(_ sector: SectorItem) {
-        // 进入板块详情页
-        print("查看板块: \(sector.name)")
-    }
-    
-    /// 异步刷新
-    private func refreshAsync() async {
-        viewModel.refresh()
-        while viewModel.isRefreshing {
-            try? await Task.sleep(nanoseconds: 50_000_000)
+        // TODO: 后续支持带话题筛选参数跳转
+        withAnimation {
+            appState.selectedMainTab = 0
         }
     }
+    
+    /// 处理股票点击 → 导航到个股详情页
+    private func handleStockTap(_ stock: WatchlistItem) {
+        selectedStock = stock
+    }
+    
+    /// 处理板块点击（由外层 NavigationLink 导航到 SectorListView）
+    private func handleSectorTap(_ sector: SectorItem) {
+        // 板块卡片的点击导航由外层 NavigationLink 处理
+    }
+    
 }
 
 #Preview {

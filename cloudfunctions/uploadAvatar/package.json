@@ -1,13 +1,8 @@
 {
   "name": "uploadAvatar",
   "version": "1.0.0",
-  "description": "Upload avatar image (base64); requires auth. Returns file URL.",
+  "description": "Upload user avatar image to cloud storage",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "@cloudbase/node-sdk": "latest"
   }

@@ -51,16 +51,14 @@ class PostDetailViewModel: ObservableObject {
 
     /// 一级评论（无 parentId）
     var topLevelComments: [Comment] {
-        comments
-            .filter { ($0.parentId ?? "").isEmpty }
-            .sorted { $0.createdAt < $1.createdAt }
+        let list = comments.filter { ($0.parentId ?? "").isEmpty }
+        return sortComments(list)
     }
 
     /// 获取某条一级评论的子回复
     func replies(for parent: Comment) -> [Comment] {
-        comments
-            .filter { $0.parentId == parent.id }
-            .sorted { $0.createdAt < $1.createdAt }
+        let list = comments.filter { $0.parentId == parent.id }
+        return sortComments(list)
     }
 
     /// 当前用户是否可以删除该评论
@@ -228,5 +226,42 @@ class PostDetailViewModel: ObservableObject {
      */
     func copy(comment: Comment) {
         UIPasteboard.general.string = comment.isDeleted ? "该评论已删除" : comment.content
+    }
+
+    // MARK: - Quote Helpers
+
+    func quotedInfo(for comment: Comment) -> (nickname: String, content: String)? {
+        guard let quoteId = comment.replyToCommentId, !quoteId.isEmpty else { return nil }
+        if let target = comments.first(where: { $0.id == quoteId }) {
+            let name = target.nickname ?? "用户"
+            let content = target.isDeleted ? "该评论已删除" : target.content
+            return (name, content)
+        }
+        let fallbackName = (comment.replyToNickname?.isEmpty == false) ? comment.replyToNickname! : "用户"
+        return (fallbackName, "引用的评论已不可见")
+    }
+
+    // MARK: - Sorting
+
+    private func sortComments(_ list: [Comment]) -> [Comment] {
+        if commentSortMode == "hot" {
+            return list.sorted { lhs, rhs in
+                if lhs.likeCount != rhs.likeCount {
+                    return lhs.likeCount > rhs.likeCount
+                }
+                let lLen = lhs.content.count
+                let rLen = rhs.content.count
+                if lLen != rLen {
+                    return lLen > rLen
+                }
+                let lQuote = lhs.replyToCommentId == nil ? 0 : 1
+                let rQuote = rhs.replyToCommentId == nil ? 0 : 1
+                if lQuote != rQuote {
+                    return lQuote > rQuote
+                }
+                return lhs.createdAt > rhs.createdAt
+            }
+        }
+        return list.sorted { $0.createdAt < $1.createdAt }
     }
 }

@@ -167,7 +167,7 @@ struct PostDetailView: View {
                             .padding(.vertical, 4)
                     }
                     Button(action: { viewModel.switchCommentSort("hot") }) {
-                        Text("最热")
+                        Text("优质")
                             .font(.system(size: 13, weight: viewModel.commentSortMode == "hot" ? .semibold : .regular))
                             .foregroundColor(
                                 viewModel.commentSortMode == "hot"
@@ -212,6 +212,7 @@ struct PostDetailView: View {
             } else {
                 ForEach(viewModel.topLevelComments) { comment in
                     VStack(spacing: 6) {
+                        let quoted = viewModel.quotedInfo(for: comment)
                         CommentRow(
                             comment: comment,
                             isReply: false,
@@ -219,9 +220,12 @@ struct PostDetailView: View {
                             onLike: { viewModel.toggleLike(comment: comment) },
                             onCopy: { viewModel.copy(comment: comment) },
                             onDelete: { viewModel.requestDelete(comment: comment) },
-                            canDelete: viewModel.canDelete(comment: comment, isLoggedIn: appState.isLoggedIn)
+                            canDelete: viewModel.canDelete(comment: comment, isLoggedIn: appState.isLoggedIn),
+                            quotedNickname: quoted?.nickname,
+                            quotedContent: quoted?.content
                         )
                         ForEach(viewModel.replies(for: comment)) { reply in
+                            let replyQuote = viewModel.quotedInfo(for: reply)
                             CommentRow(
                                 comment: reply,
                                 isReply: true,
@@ -229,7 +233,9 @@ struct PostDetailView: View {
                                 onLike: { viewModel.toggleLike(comment: reply) },
                                 onCopy: { viewModel.copy(comment: reply) },
                                 onDelete: { viewModel.requestDelete(comment: reply) },
-                                canDelete: viewModel.canDelete(comment: reply, isLoggedIn: appState.isLoggedIn)
+                                canDelete: viewModel.canDelete(comment: reply, isLoggedIn: appState.isLoggedIn),
+                                quotedNickname: replyQuote?.nickname,
+                                quotedContent: replyQuote?.content
                             )
                             .padding(.leading, 20)
                         }
@@ -269,6 +275,23 @@ struct PostDetailView: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
                 }
+                .padding(.horizontal, 16)
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("引用内容")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                        Text(replying.content.count > 60 ? String(replying.content.prefix(60)) + "…" : replying.content)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(uiColor: ColorPalette.bgSecondary))
+                .cornerRadius(10)
                 .padding(.horizontal, 16)
             }
 
@@ -322,6 +345,8 @@ struct CommentRow: View {
     let onCopy: () -> Void
     let onDelete: () -> Void
     let canDelete: Bool
+    let quotedNickname: String?
+    let quotedContent: String?
 
     private var displayName: String { comment.nickname ?? "用户" }
 
@@ -370,10 +395,24 @@ struct CommentRow: View {
                     .font(.system(size: 14))
                     .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
             } else {
+                if let quotedContent, let quotedNickname {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("引用 \(quotedNickname)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                        Text(quotedContent)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
+                            .lineLimit(2)
+                    }
+                    .padding(8)
+                    .background(Color(uiColor: ColorPalette.bgPrimary))
+                    .cornerRadius(8)
+                }
                 Text(comment.content)
                     .font(.system(size: 14))
                     .foregroundColor(Color(uiColor: ColorPalette.textPrimary))
-                Button("回复", action: onReply)
+                Button("引用回复", action: onReply)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
             }

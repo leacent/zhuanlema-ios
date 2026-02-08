@@ -33,6 +33,7 @@ class ComposePostViewModel: ObservableObject {
 
     let maxImages = 9
     let maxContentLength = 500
+    let minRecommendedLength = 30
 
     // MARK: - Callbacks
 

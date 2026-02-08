@@ -105,6 +105,9 @@ struct ComposePostView: View {
             Text("分享你的交易心得")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+            Text("建议按「观点 / 依据 / 操作」结构分享，更容易获得有效互动")
+                .font(.system(size: 12))
+                .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 12)
@@ -126,12 +129,16 @@ struct ComposePostView: View {
                     .scrollContentBackground(.hidden)
 
                 if viewModel.content.isEmpty {
-                    Text("今天市场怎么样？聊聊你的操作和想法...")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
-                        .padding(.top, 20)
-                        .padding(.leading, 16)
-                        .allowsHitTesting(false)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("观点：你如何看待当前市场/个股？")
+                        Text("依据：用数据或逻辑支撑你的判断")
+                        Text("操作：你的仓位与计划是什么？")
+                    }
+                    .font(.system(size: 15))
+                    .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
+                    .padding(.top, 18)
+                    .padding(.leading, 16)
+                    .allowsHitTesting(false)
                 }
             }
             .frame(height: 200)
@@ -145,6 +152,11 @@ struct ComposePostView: View {
                             Color(uiColor: ColorPalette.error) :
                             Color(uiColor: ColorPalette.textTertiary)
                     )
+            }
+            if viewModel.content.count > 0 && viewModel.content.count < viewModel.minRecommendedLength {
+                Text("内容偏短，建议补充依据或操作细节")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(uiColor: ColorPalette.error))
             }
         }
         .padding(16)

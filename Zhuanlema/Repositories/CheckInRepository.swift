@@ -11,18 +11,17 @@ class CheckInRepository {
     /**
      * 提交打卡
      *
-     * @param result 打卡结果 ("yes" 或 "no")
+     * @param result 打卡结果 ("yes" / "no" / "neutral")
+     * @param magnitude 盈亏幅度 ("big_win" / "small_win" / "neutral" / "small_loss" / "big_loss")
      * @returns 打卡记录ID
      */
-    func submitCheckIn(result: String) async throws -> String {
+    func submitCheckIn(result: String, magnitude: String? = nil) async throws -> String {
         let today = DateFormatter.yyyyMMdd.string(from: Date())
         
         if let user = userRepository.getCurrentUser() {
-            // 已登录：同步到云端
-            return try await databaseService.createCheckIn(userId: user.id, result: result)
+            return try await databaseService.createCheckIn(userId: user.id, result: result, magnitude: magnitude)
         } else {
-            // 未登录：仅保存在本地
-            saveCheckInLocally(result: result, date: today)
+            saveCheckInLocally(result: result, magnitude: magnitude, date: today)
             return "local_success"
         }
     }
@@ -30,20 +29,23 @@ class CheckInRepository {
     /**
      * 仅保存到本地（云端失败时由调用方使用）
      */
-    func saveCheckInLocallyOnly(result: String) {
+    func saveCheckInLocallyOnly(result: String, magnitude: String? = nil) {
         let today = DateFormatter.yyyyMMdd.string(from: Date())
-        saveCheckInLocally(result: result, date: today)
+        saveCheckInLocally(result: result, magnitude: magnitude, date: today)
     }
 
     /**
      * 将打卡记录保存到本地
      */
-    private func saveCheckInLocally(result: String, date: String) {
-        let record: [String: String] = [
+    private func saveCheckInLocally(result: String, magnitude: String? = nil, date: String) {
+        var record: [String: String] = [
             "date": date,
             "result": result,
             "timestamp": String(Date().timeIntervalSince1970)
         ]
+        if let magnitude = magnitude {
+            record["magnitude"] = magnitude
+        }
         
         var history = UserDefaults.standard.array(forKey: "local_check_in_history") as? [[String: String]] ?? []
         history.append(record)

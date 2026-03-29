@@ -37,7 +37,9 @@ Use the CloudBase MCP server (`user-cloudbase`) to interact with Tencent CloudBa
 - `getProfile`, `updateProfile`, `uploadAvatar`
 - `getPosts`, `createPost`
 - `getUserStats`, `getNotifications`, `submitFeedback`
-- `getHotStocks`, `getSectorData`
+- `generateDailyReport` (AI 每日复盘生成, timeout=120s)
+- `getDailyReport` (获取每日报告)
+- `aiChat` (AI 追问对话, timeout=120s)
 
 ## Common Operations
 

@@ -1,0 +1,9 @@
+{
+  "name": "generateDailyReport",
+  "version": "1.0.0",
+  "description": "每日复盘报告生成：抓取行情 + 聚合打卡 + DeepSeek 生成",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0"
+  }
+}

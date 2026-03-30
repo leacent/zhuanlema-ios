@@ -4,38 +4,26 @@
  * 入参: userId, year, month（1-12），可从 body 或 event 顶层读取
  * 返回: { success, data: [ { _id, userId, date, result, createdAt } ] }
  */
-const cloud = require("@cloudbase/node-sdk");
-
-const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
-const db = app.database();
+const { db, parseEvent, ok, fail } = require('./cloudbase-common');
 
 function lastDayOfMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-function parseBody(event) {
-  if (!event || !event.body) return {};
-  if (typeof event.body === "object") return event.body;
-  if (typeof event.body === "string") {
-    try { return JSON.parse(event.body); } catch (_) { return {}; }
-  }
-  return {};
-}
-
 exports.main = async (event, context) => {
-  const body = parseBody(event);
-  const userId = body.userId || event.userId;
-  let year = body.year ?? event.year;
-  let month = body.month ?? event.month;
+  const params = parseEvent(event);
+  const userId = params.userId;
+  let year = params.year;
+  let month = params.month;
 
   if (!userId || year == null || month == null) {
-    return { success: false, message: "缺少 userId、year 或 month" };
+    return fail("缺少 userId、year 或 month");
   }
 
   year = parseInt(year, 10);
   month = parseInt(month, 10);
   if (month < 1 || month > 12) {
-    return { success: false, message: "month 需为 1-12" };
+    return fail("month 需为 1-12");
   }
 
   const startStr = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -58,9 +46,9 @@ exports.main = async (event, context) => {
       createdAt: doc.createTime ? Math.floor(doc.createTime / 1000) : null,
     }));
 
-    return { success: true, data };
+    return ok(data);
   } catch (e) {
     console.error("getCheckInHistory error:", e);
-    return { success: false, message: "获取打卡记录失败: " + e.message };
+    return fail("获取打卡记录失败: " + e.message);
   }
 };

@@ -2,19 +2,13 @@
  * 获取用户消息通知列表
  * 输入: userId, limit?, offset?
  */
-const cloud = require("@cloudbase/node-sdk");
-
-const app = cloud.init({
-  env: cloud.SYMBOL_CURRENT_ENV,
-});
-
-const db = app.database();
+const { db, parseEvent, ok, fail } = require("./cloudbase-common");
 
 exports.main = async (event, context) => {
-  const { userId, limit = 20, offset = 0 } = event;
+  const { userId, limit = 20, offset = 0 } = parseEvent(event);
 
   if (!userId) {
-    return { success: false, message: "缺少 userId" };
+    return fail("缺少 userId");
   }
 
   try {
@@ -35,12 +29,9 @@ exports.main = async (event, context) => {
       createdAt: doc.createdAt,
     }));
 
-    return {
-      success: true,
-      data: { notifications: list },
-    };
+    return ok({ notifications: list });
   } catch (e) {
     console.error("getNotifications error:", e);
-    return { success: false, message: "获取通知失败: " + e.message };
+    return fail("获取通知失败: " + e.message);
   }
 };

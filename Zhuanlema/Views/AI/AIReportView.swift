@@ -26,7 +26,7 @@ struct AIReportView: View {
 
     @ViewBuilder
     private func reportContent(_ report: AIReport) -> some View {
-        // 日期标题
+        // 日期标题 + 非当日提醒
         HStack {
             Image(systemName: "calendar")
                 .font(.system(size: 13))
@@ -34,6 +34,17 @@ struct AIReportView: View {
             Text(formatDate(report.date))
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+
+            if !report.isToday {
+                Text("上一交易日")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.12))
+                    .cornerRadius(6)
+            }
+
             Spacer()
             Text("每日复盘")
                 .font(.system(size: 12, weight: .medium))
@@ -47,7 +58,11 @@ struct AIReportView: View {
         // 情绪 + 大盘并排
         HStack(alignment: .top, spacing: 16) {
             if let sentiment = report.sentimentData {
-                SentimentRingView(yesPercent: sentiment.yesPercent, totalCheckIns: sentiment.totalCheckIns)
+                SentimentRingView(
+                    yesPercent: sentiment.yesPercent,
+                    totalCheckIns: sentiment.totalCheckIns,
+                    isSufficientSample: sentiment.hasSufficientSample
+                )
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -89,21 +104,32 @@ struct AIReportView: View {
             insightCard(text: insight)
         }
 
-        // 明日展望
+        // 心态提醒
         if let outlook = report.aiContent?.outlook, !outlook.isEmpty {
-            HStack(spacing: 8) {
-                Image(systemName: "eye.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.orange)
-                Text(outlook)
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "heart.text.square.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("心态提醒")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.blue.opacity(0.8))
+                    Text(outlook)
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.orange.opacity(0.06))
+            .background(Color.blue.opacity(0.05))
             .cornerRadius(12)
         }
+
+        // AI 免责声明
+        Text("本内容由 AI 生成，仅供参考，不构成投资建议")
+            .font(.system(size: 11))
+            .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func insightCard(text: String) -> some View {
@@ -186,7 +212,7 @@ struct AIReportView: View {
                     szIndex: IndexQuote(name: "深证成指", close: 10856.78, changePercent: 0.15),
                     cyIndex: IndexQuote(name: "创业板指", close: 2180.45, changePercent: 0.52)
                 ),
-                sentimentData: SentimentSnapshot(totalCheckIns: 1280, yesCount: 832, noCount: 448, yesPercent: 65),
+                sentimentData: SentimentSnapshot(totalCheckIns: 1280, yesCount: 832, noCount: 448, yesPercent: 65, isSufficientSample: true),
                 aiContent: AIContent(
                     oneLiner: "沪弱深强，创业板小哥们挺争气",
                     summary: "今天大盘震荡收跌，上证指数微跌0.3%，但创业板逆势上涨0.5%。成交额维持在1.2万亿，市场活跃度还算可以。科技板块整体表现不错，AI概念继续活跃。蓝筹白马有点拉胯，银行保险略显疲态。",

@@ -22,6 +22,7 @@ class HomeViewModel: ObservableObject {
 
     @Published var aiSummaryText: String = "加载中…"
     @Published var isAISummaryLoading: Bool = false
+    @Published var isAIReportToday: Bool = true
 
     private let checkInRepository = CheckInRepository()
     private let aiRepository = AIRepository()
@@ -108,9 +109,11 @@ class HomeViewModel: ObservableObject {
         isAISummaryLoading = true
         do {
             let report = try await aiRepository.getDailyReport()
-            self.aiSummaryText = report.aiContent?.oneLiner ?? "暂无今日复盘"
+            self.aiSummaryText = report.aiContent?.oneLiner ?? "暂无复盘"
+            self.isAIReportToday = report.isToday
         } catch {
             self.aiSummaryText = "点击查看 AI 复盘"
+            self.isAIReportToday = true
             print("⚠️ [HomeViewModel] 加载 AI 摘要失败: \(error.localizedDescription)")
         }
         isAISummaryLoading = false

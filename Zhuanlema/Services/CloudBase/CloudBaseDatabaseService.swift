@@ -471,6 +471,98 @@ class CloudBaseDatabaseService {
         return (data.commentId, data.commentCount)
     }
 
+    // MARK: - 个人复盘日记
+
+    /**
+     * 创建或更新个人复盘日记（需登录）
+     */
+    func saveTradingReview(
+        date: String,
+        actions: [String],
+        drivers: [String],
+        emotions: [String],
+        content: String,
+        satisfaction: Int,
+        checkInResult: String?,
+        checkInMagnitude: String?,
+        accessToken: String
+    ) async throws -> TradingReview {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        var body: [String: Any] = [
+            "date": date,
+            "actions": actions,
+            "drivers": drivers,
+            "emotions": emotions,
+            "content": content,
+            "satisfaction": satisfaction,
+        ]
+        if let r = checkInResult { body["checkInResult"] = r }
+        if let m = checkInMagnitude { body["checkInMagnitude"] = m }
+
+        let result: CloudFunctionResponse<TradingReview> = try await CloudBaseHTTPClient.callWithUserTokenInBody(
+            name: "createTradingReview", body: body, accessToken: accessToken
+        )
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "保存复盘失败"])
+        }
+        return data
+    }
+
+    /**
+     * 获取复盘日记列表（需登录）
+     * @param date 指定日期，返回单条
+     * @param year/month 指定月份，返回该月所有
+     * @param limit 不指定条件时的分页数量
+     */
+    func getTradingReviews(date: String? = nil, year: Int? = nil, month: Int? = nil, limit: Int = 20, accessToken: String) async throws -> [TradingReview] {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+
+        struct ReviewListData: Codable {
+            let data: ReviewPayload
+        }
+        struct ReviewPayload: Codable {}
+
+        var body: [String: Any] = ["limit": limit]
+        if let d = date { body["date"] = d }
+        if let y = year { body["year"] = y }
+        if let m = month { body["month"] = m }
+
+        struct ListResponse: Codable {
+            let success: Bool
+            let message: String?
+            let data: AnyCodableReviews?
+        }
+        struct AnyCodableReviews: Codable {
+            init(from decoder: Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let arr = try? container.decode([TradingReview].self) {
+                    self.reviews = arr
+                } else if let single = try? container.decode(TradingReview.self) {
+                    self.reviews = [single]
+                } else {
+                    self.reviews = []
+                }
+            }
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.singleValueContainer()
+                try container.encode(reviews)
+            }
+            let reviews: [TradingReview]
+        }
+
+        let result: ListResponse = try await CloudBaseHTTPClient.callWithUserTokenInBody(
+            name: "getTradingReviews", body: body, accessToken: accessToken
+        )
+        guard result.success else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "获取复盘日记失败"])
+        }
+        return result.data?.reviews ?? []
+    }
+
     // MARK: - AI 复盘
 
     /**
@@ -536,3 +628,28 @@ struct AIChatResponse: Codable {
     let reply: String
     let conversationId: String
 }
+
+// MARK: - AI 反馈
+
+extension CloudBaseDatabaseService {
+    /**
+     * 提交 AI 对话反馈（写入 ai_feedback 集合）
+     */
+    func submitAIChatFeedback(conversationId: String, messageTimestamp: Double, feedback: String) async throws {
+        guard CloudBaseHTTPClient.hasPublishableKey else { return }
+        let body: [String: Any] = [
+            "conversationId": conversationId,
+            "messageTimestamp": messageTimestamp,
+            "feedback": feedback,
+        ]
+        let result: CloudFunctionResponse<EmptyResponse> = try await CloudBaseHTTPClient.call(
+            name: "submitAIFeedback", body: body
+        )
+        if !result.success {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: result.message ?? "反馈提交失败"])
+        }
+    }
+}
+
+private struct EmptyResponse: Codable {}

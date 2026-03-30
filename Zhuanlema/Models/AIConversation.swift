@@ -20,9 +20,43 @@ struct AIConversation: Codable, Identifiable {
 
 struct ChatMessage: Codable, Identifiable {
     let role: String
-    let content: String
+    var content: String
     let timestamp: Double?
 
-    var id: String { "\(role)_\(timestamp ?? 0)_\(content.hashValue)" }
+    let stableId: String
+
+    var id: String { stableId }
     var isUser: Bool { role == "user" }
+
+    init(role: String, content: String, timestamp: Double?) {
+        self.role = role
+        self.content = content
+        self.timestamp = timestamp
+        self.stableId = UUID().uuidString
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case role, content, timestamp
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decode(String.self, forKey: .role)
+        content = try container.decode(String.self, forKey: .content)
+        timestamp = try container.decodeIfPresent(Double.self, forKey: .timestamp)
+        stableId = UUID().uuidString
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(role, forKey: .role)
+        try container.encode(content, forKey: .content)
+        try container.encodeIfPresent(timestamp, forKey: .timestamp)
+    }
+}
+
+enum MessageFeedback: String {
+    case none
+    case positive
+    case negative
 }

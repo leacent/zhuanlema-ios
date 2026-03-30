@@ -1,38 +1,9 @@
 /**
  * 获取当前用户资料（需登录）
  * 新用户（无 users 文档）时：昵称由 CloudBase AI（混元）生成，头像从 avatar_pool 集合随机取；失败则用默认「用户」和空头像。
- * 支持两种方式获取用户身份：
- * 1. 网关转发用户态：auth.getUserInfo() 得到 uid
- * 2. 网关仅 Publishable Key：从 event.access_token 解析 JWT 的 sub 作为 userId
+ * 用户身份由 cloudbase-common 的 resolveUserId：优先网关用户态，否则 JWT access_token.sub。
  */
-const cloud = require("@cloudbase/node-sdk");
-
-const app = cloud.init({
-  env: "prod-1-3g3ukjzod3d5e3a1",
-});
-
-const db = app.database();
-const auth = app.auth();
-
-/** 从 event 或 event.body 中取 access_token，并解析 JWT payload.sub 作为 userId（不校验签名，仅用于网关不转发用户态时的回退） */
-function getUserIdFromEvent(event) {
-  let token =
-    (event && event.access_token) ||
-    (event && event.body && typeof event.body === "object" && event.body.access_token) ||
-    (event && event.body && typeof event.body === "string" ? (() => { try { return JSON.parse(event.body).access_token; } catch (_) { return null; } })() : null);
-  if (!token || typeof token !== "string") return null;
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const pad = b64.length % 4;
-    if (pad) b64 += "=".repeat(4 - pad);
-    const payload = JSON.parse(Buffer.from(b64, "base64").toString());
-    return payload.sub || null;
-  } catch (e) {
-    return null;
-  }
-}
+const { app, db, parseEvent, resolveUserId, ok, fail } = require("./cloudbase-common");
 
 /** 预定义随机昵称池（AI 生成失败时的可靠兜底） */
 const RANDOM_NICKNAMES = [
@@ -144,28 +115,15 @@ function createdAtToSeconds(val) {
 
 exports.main = async (event, context) => {
   try {
-    let userId;
-    try {
-      const { uid, customUserId } = auth.getUserInfo();
-      userId = customUserId || uid;
-    } catch (_) {}
+    const userId = resolveUserId(event);
     if (!userId) {
-      userId = getUserIdFromEvent(event);
-    }
-    if (!userId) {
-      return { success: false, message: "未登录" };
+      return fail("未登录");
     }
     console.log("[getProfile] 当前访问 UserId:", userId);
 
-    // 解析 body（网关可能传 event.body 或平铺到 event），用于可选 phone_number（验证码注册后首次拉资料时写入）
-    let rawBody = event && event.body && typeof event.body === "object" ? event.body : {};
-    if (event && event.body && typeof event.body === "string") {
-      try { rawBody = JSON.parse(event.body); } catch (_) {}
-    }
-    if (!rawBody || typeof rawBody !== "object") rawBody = {};
-    if (Object.keys(rawBody).length === 0 && event && typeof event === "object") rawBody = event;
-    const phoneForNewUser = typeof rawBody.phone_number === "string" && rawBody.phone_number.trim() !== ""
-      ? rawBody.phone_number.trim()
+    const params = parseEvent(event);
+    const phoneForNewUser = typeof params.phone_number === "string" && params.phone_number.trim() !== ""
+      ? params.phone_number.trim()
       : null;
     if (phoneForNewUser) {
       console.log("[getProfile] 收到 phone_number（新用户将写入）:", phoneForNewUser);
@@ -193,10 +151,7 @@ exports.main = async (event, context) => {
         createdAt: now,
         updatedAt: now,
       });
-      return {
-        success: true,
-        data: { _id: userId, nickname, avatar, phone_number, created_at },
-      };
+      return ok({ _id: userId, nickname, avatar, phone_number, created_at });
     }
 
     console.log("[getProfile] 文档字段:", Object.keys(data));
@@ -240,18 +195,15 @@ exports.main = async (event, context) => {
       avatarPreview: avatarForClient ? avatarForClient.slice(0, 60) + "..." : "(empty)"
     });
 
-    return {
-      success: true,
-      data: {
-        _id: data._id || userId,
-        nickname: data.nickname || "用户",
-        avatar: avatarForClient,
-        phone_number: data.phone_number ?? null,
-        created_at: createdAtToSeconds(data.createdAt) ?? Date.now() / 1000,
-      },
-    };
+    return ok({
+      _id: data._id || userId,
+      nickname: data.nickname || "用户",
+      avatar: avatarForClient,
+      phone_number: data.phone_number ?? null,
+      created_at: createdAtToSeconds(data.createdAt) ?? Date.now() / 1000,
+    });
   } catch (e) {
     console.error("getProfile error:", e);
-    return { success: false, message: "获取资料失败: " + e.message };
+    return fail("获取资料失败: " + e.message);
   }
 };

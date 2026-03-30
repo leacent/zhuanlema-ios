@@ -3,22 +3,14 @@
  * 输入: userId
  * 返回: checkInCount, postCount, totalLikeCount
  */
-const cloud = require("@cloudbase/node-sdk");
-
-const app = cloud.init({
-  env: cloud.SYMBOL_CURRENT_ENV,
-});
-
-const db = app.database();
+const { db, parseEvent, ok, fail } = require("./cloudbase-common");
 
 exports.main = async (event, context) => {
-  const { userId } = event;
+  const params = parseEvent(event);
+  const { userId } = params;
 
   if (!userId) {
-    return {
-      success: false,
-      message: "缺少 userId",
-    };
+    return fail("缺少 userId");
   }
 
   try {
@@ -34,19 +26,13 @@ exports.main = async (event, context) => {
     const postCount = posts.length;
     const totalLikeCount = posts.reduce((sum, p) => sum + (p.likeCount || 0), 0);
 
-    return {
-      success: true,
-      data: {
-        checkInCount,
-        postCount,
-        totalLikeCount,
-      },
-    };
+    return ok({
+      checkInCount,
+      postCount,
+      totalLikeCount,
+    });
   } catch (e) {
     console.error("getUserStats error:", e);
-    return {
-      success: false,
-      message: "获取用户统计失败: " + e.message,
-    };
+    return fail("获取用户统计失败: " + e.message);
   }
 };

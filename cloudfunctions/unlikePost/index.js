@@ -2,22 +2,18 @@
  * 取消点赞（需登录）
  * 删除 post_likes 记录并减少 user_posts.likeCount，更新 hotScore
  */
-const cloud = require("@cloudbase/node-sdk");
-const { resolveUserId, calcHotScore } = require("./shared-utils");
-
-const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
-const db = app.database();
-const auth = app.auth();
+const { db, _, resolveUserId, parseEvent, ok, fail, calcHotScore } = require("./cloudbase-common");
 
 exports.main = async (event) => {
-  const postId = event?.postId ?? event?.body?.postId;
+  const params = parseEvent(event);
+  const { postId } = params;
   if (!postId || typeof postId !== "string") {
-    return { success: false, message: "缺少 postId" };
+    return fail("缺少 postId");
   }
 
-  const userId = resolveUserId(auth, event);
+  const userId = resolveUserId(event);
   if (!userId) {
-    return { success: false, message: "未登录" };
+    return fail("未登录");
   }
 
   try {
@@ -25,7 +21,6 @@ exports.main = async (event) => {
     const existing = await likesCol.where({ postId, userId }).get();
     const list = Array.isArray(existing.data) ? existing.data : (existing.data ? [existing.data] : []);
 
-    const _ = db.command;
     const postRef = db.collection("user_posts").doc(postId);
 
     if (list.length > 0) {
@@ -52,8 +47,8 @@ exports.main = async (event) => {
     const createdAt = (raw && typeof raw.createdAt === "number") ? raw.createdAt : Date.now();
     await postRef.update({ hotScore: calcHotScore(newCount, commentCount, createdAt) });
 
-    return { success: true, data: { likeCount: newCount, isLiked: false } };
+    return ok({ likeCount: newCount, isLiked: false });
   } catch (e) {
-    return { success: false, message: "取消点赞失败: " + e.message };
+    return fail("取消点赞失败: " + e.message);
   }
 };

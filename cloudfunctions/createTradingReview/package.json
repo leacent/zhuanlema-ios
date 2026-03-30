@@ -1,0 +1,9 @@
+{
+  "name": "createTradingReview",
+  "version": "1.0.0",
+  "description": "创建或更新个人复盘日记",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

@@ -3,11 +3,7 @@
  * Body: imageBase64, access_token?
  * 返回: { success, data: { url, fileID } }
  */
-const cloud = require("@cloudbase/node-sdk");
-const { resolveUserId } = require("./shared-utils");
-
-const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
-const auth = app.auth();
+const { app, resolveUserId, parseEvent, ok, fail } = require("./cloudbase-common");
 
 /** 剥离 data URL 前缀 */
 function stripDataUrlPrefix(dataUrl) {
@@ -20,28 +16,24 @@ function stripDataUrlPrefix(dataUrl) {
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 exports.main = async (event) => {
-  const userId = resolveUserId(auth, event);
+  const params = parseEvent(event);
+  const userId = resolveUserId(event);
   if (!userId) {
-    return { success: false, message: "未登录" };
+    return fail("未登录");
   }
 
-  // 从 body 读取 imageBase64
-  let raw = (event?.body && typeof event.body === "object") ? event.body : {};
-  if (typeof event?.body === "string") {
-    try { raw = JSON.parse(event.body); } catch (_) { raw = {}; }
-  }
-  let base64 = raw.imageBase64 ?? event?.imageBase64;
+  let base64 = params.imageBase64;
   base64 = stripDataUrlPrefix(base64);
   if (!base64) {
-    return { success: false, message: "缺少 imageBase64" };
+    return fail("缺少 imageBase64");
   }
 
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) {
-    return { success: false, message: "图片内容无效" };
+    return fail("图片内容无效");
   }
   if (buf.length > MAX_IMAGE_BYTES) {
-    return { success: false, message: "图片大小不能超过 5MB" };
+    return fail("图片大小不能超过 5MB");
   }
 
   try {
@@ -50,18 +42,18 @@ exports.main = async (event) => {
 
     const fileID = res.fileID;
     if (!fileID) {
-      return { success: false, message: "上传失败" };
+      return fail("上传失败");
     }
 
     const urlRes = await app.getTempFileURL({ fileList: [fileID] });
     const first = (urlRes.fileList || [])[0];
     const url = first?.tempFileURL || null;
     if (!url) {
-      return { success: false, message: "获取访问链接失败" };
+      return fail("获取访问链接失败");
     }
 
-    return { success: true, data: { url, fileID } };
+    return ok({ url, fileID });
   } catch (e) {
-    return { success: false, message: "上传失败: " + (e.message || String(e)) };
+    return fail("上传失败: " + (e.message || String(e)));
   }
 };

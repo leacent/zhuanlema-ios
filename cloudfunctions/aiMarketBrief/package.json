@@ -1,0 +1,9 @@
+{
+  "name": "aiMarketBrief",
+  "version": "1.0.0",
+  "description": "大盘行情简报：拉取三大指数 + DeepSeek 短评",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0"
+  }
+}

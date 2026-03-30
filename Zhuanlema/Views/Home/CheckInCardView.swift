@@ -136,30 +136,58 @@ struct CheckInCardView: View {
 
     // MARK: - 已打卡状态
 
+    @State private var showReviewEditor = false
+
     private var checkedInCard: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title3)
-                .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
 
-            if let stats = viewModel.checkInStats {
-                Text("今天 \(stats.yesPercentage)% 的人赚了")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
-            } else {
-                Text("已完成今日打卡")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                if let stats = viewModel.checkInStats {
+                    Text("今天 \(stats.yesPercentage)% 的人赚了")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                } else {
+                    Text("已完成今日打卡")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color(uiColor: ColorPalette.textSecondary))
+                }
+
+                Spacer()
+
+                resultBadge
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
 
-            Spacer()
+            Divider().padding(.horizontal, 16)
 
-            resultBadge
+            Button(action: { showReviewEditor = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "pencil.line")
+                        .font(.system(size: 12))
+                    Text("记录一下今天的操作？")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
         .background(Color(uiColor: ColorPalette.bgSecondary))
         .cornerRadius(16)
+        .sheet(isPresented: $showReviewEditor) {
+            TradingReviewEditorView(
+                checkInResult: viewModel.todayResult,
+                checkInMagnitude: nil
+            )
+        }
     }
 
     @ViewBuilder

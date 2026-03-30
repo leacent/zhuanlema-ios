@@ -34,4 +34,18 @@ class AIRepository {
     func generateReport(date: String? = nil, force: Bool = false) async throws -> AIReport {
         return try await databaseService.generateDailyReport(date: date, force: force)
     }
+
+    /**
+     * 提交 AI 回复反馈
+     * @param conversationId 对话 ID
+     * @param messageTimestamp 消息时间戳
+     * @param feedback "positive" / "negative"
+     */
+    func submitFeedback(conversationId: String, messageTimestamp: Double, feedback: String) async throws {
+        try await databaseService.submitAIChatFeedback(
+            conversationId: conversationId,
+            messageTimestamp: messageTimestamp,
+            feedback: feedback
+        )
+    }
 }

@@ -1,20 +1,15 @@
 /**
  * 删除指定手机号用户及其关联数据（管理用途，一次性调用）
- * @param {string} event.phone_number - 用户手机号
+ * @param {string} phone_number - 用户手机号（event 顶层或 body）
  */
-const cloud = require("@cloudbase/node-sdk");
-
-const app = cloud.init({
-  env: "prod-1-3g3ukjzod3d5e3a1",
-});
-
-const db = app.database();
+const { db, parseEvent, fail } = require("./cloudbase-common");
 
 exports.main = async (event, context) => {
   try {
-    const phone = (event && event.phone_number) || (event && event.body && typeof event.body === "string" ? JSON.parse(event.body).phone_number : null) || (event && event.body && event.body.phone_number);
+    const params = parseEvent(event);
+    const phone = params.phone_number;
     if (!phone) {
-      return { success: false, message: "缺少 phone_number 参数" };
+      return fail("缺少 phone_number 参数");
     }
     console.log("[deleteUserByPhone] 查询手机号:", phone);
 
@@ -23,7 +18,7 @@ exports.main = async (event, context) => {
     const userRes = await usersCol.where({ phone_number: phone }).limit(10).get();
     const users = Array.isArray(userRes.data) ? userRes.data : [];
     if (users.length === 0) {
-      return { success: false, message: "未找到手机号为 " + phone + " 的用户" };
+      return fail("未找到手机号为 " + phone + " 的用户");
     }
 
     const deletedUsers = [];
@@ -55,6 +50,6 @@ exports.main = async (event, context) => {
     };
   } catch (e) {
     console.error("deleteUserByPhone error:", e);
-    return { success: false, message: "删除失败: " + e.message };
+    return fail("删除失败: " + e.message);
   }
 };

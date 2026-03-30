@@ -4,13 +4,7 @@
  *
  * 使用前请在 CloudBase 控制台先创建集合：数据库 -> 添加集合 -> 集合名称 avatar_pool。
  */
-const cloud = require("@cloudbase/node-sdk");
-
-const app = cloud.init({
-  env: "prod-1-3g3ukjzod3d5e3a1",
-});
-
-const db = app.database();
+const { db, parseEvent, ok, fail } = require("./cloudbase-common");
 
 // 50 个公开免费的动漫风格头像 URL（DiceBear PNG 格式，iOS AsyncImage 兼容）
 const AVATAR_URLS = [
@@ -70,8 +64,8 @@ const AVATAR_URLS = [
 
 exports.main = async (event, context) => {
   try {
-    // 是否强制重新初始化（删除旧数据重写）
-    const force = (event && event.force) || (event && event.body && typeof event.body === "string" ? JSON.parse(event.body).force : false);
+    const { force: forceFlag } = parseEvent(event);
+    const force = !!forceFlag;
     const col = db.collection("avatar_pool");
 
     if (force) {
@@ -99,7 +93,9 @@ exports.main = async (event, context) => {
         const existing = await col.limit(1).get();
         const hasData = existing.data && Array.isArray(existing.data) && existing.data.length > 0;
         if (hasData) {
-          return { success: true, message: "avatar_pool 已有数据，跳过初始化（传 force=true 可强制重写）" };
+          return ok({
+            message: "avatar_pool 已有数据，跳过初始化（传 force=true 可强制重写）",
+          });
         }
       } catch (e) {
         if (e.code !== "DATABASE_COLLECTION_NOT_EXIST") throw e;
@@ -109,9 +105,9 @@ exports.main = async (event, context) => {
     for (const url of AVATAR_URLS) {
       await col.add({ url });
     }
-    return { success: true, message: `已写入 ${AVATAR_URLS.length} 条 PNG 头像 URL` };
+    return ok({ message: `已写入 ${AVATAR_URLS.length} 条 PNG 头像 URL` });
   } catch (e) {
     console.error("initAvatarPool error:", e);
-    return { success: false, message: "初始化失败: " + e.message };
+    return fail("初始化失败: " + e.message);
   }
 };

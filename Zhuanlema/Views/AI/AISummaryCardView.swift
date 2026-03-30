@@ -9,6 +9,7 @@ struct AISummaryCardView: View {
     @EnvironmentObject var appState: AppState
     let summaryText: String
     let isLoading: Bool
+    var isReportToday: Bool = true
 
     var body: some View {
         Button(action: { appState.selectedMainTab = 1 }) {
@@ -20,9 +21,9 @@ struct AISummaryCardView: View {
                         Text("AI 复盘")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(Color(uiColor: ColorPalette.brandPrimary))
-                        Text("今日")
+                        Text(isReportToday ? "今日" : "上一交易日")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(uiColor: ColorPalette.textTertiary))
+                            .foregroundColor(isReportToday ? Color(uiColor: ColorPalette.textTertiary) : .orange)
                     }
 
                     if isLoading {

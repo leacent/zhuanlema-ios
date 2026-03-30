@@ -1,0 +1,9 @@
+{
+  "name": "getTradingReviews",
+  "version": "1.0.0",
+  "description": "获取个人复盘日记列表",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

@@ -158,6 +158,60 @@
       "timeout": 120,
       "runtime": "Nodejs18.15",
       "handler": "index.main"
+    },
+    {
+      "name": "createTradingReview",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getTradingReviews",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "submitAIFeedback",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "aiMarketBrief",
+      "timeout": 60,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "followUser",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "unfollowUser",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getFollowers",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getFollowing",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "initComments",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
     }
   ],
   "databases": {
@@ -226,6 +280,21 @@
         "name": "ai_conversations",
         "aclTag": "PRIVATE",
         "description": "AI 对话历史（云函数读写）"
+      },
+      {
+        "name": "trading_reviews",
+        "aclTag": "PRIVATE",
+        "description": "个人复盘日记（云函数读写）"
+      },
+      {
+        "name": "ai_feedback",
+        "aclTag": "PRIVATE",
+        "description": "AI 回复反馈记录"
+      },
+      {
+        "name": "sentiment_history",
+        "aclTag": "READONLY",
+        "description": "情绪历史快照（云函数写入）"
       }
     ]
   }

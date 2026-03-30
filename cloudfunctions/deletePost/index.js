@@ -3,22 +3,18 @@
  * - 软删除帖子：isDeleted=true, deletedAt=now, content=""
  * - 级联清理：post_comments、post_likes、comment_likes
  */
-const cloud = require("@cloudbase/node-sdk");
-const { resolveUserId } = require("./shared-utils");
-
-const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
-const db = app.database();
-const auth = app.auth();
+const { db, resolveUserId, parseEvent, ok, fail } = require("./cloudbase-common");
 
 exports.main = async (event) => {
-  const postId = event?.postId ?? event?.body?.postId;
+  const params = parseEvent(event);
+  const { postId } = params;
   if (!postId || typeof postId !== "string") {
-    return { success: false, message: "缺少 postId" };
+    return fail("缺少 postId");
   }
 
-  const userId = resolveUserId(auth, event);
+  const userId = resolveUserId(event);
   if (!userId) {
-    return { success: false, message: "未登录" };
+    return fail("未登录");
   }
 
   try {
@@ -26,15 +22,15 @@ exports.main = async (event) => {
     const postRes = await postRef.get();
     const raw = Array.isArray(postRes.data) && postRes.data.length > 0 ? postRes.data[0] : postRes.data;
     if (!raw || typeof raw !== "object") {
-      return { success: false, message: "帖子不存在" };
+      return fail("帖子不存在");
     }
 
     if (raw.userId !== userId) {
-      return { success: false, message: "无权限删除该帖子" };
+      return fail("无权限删除该帖子");
     }
 
     if (raw.isDeleted === true) {
-      return { success: true, data: { postId } };
+      return ok({ postId });
     }
 
     // 软删除帖子
@@ -65,8 +61,8 @@ exports.main = async (event) => {
       });
     } catch (_) {}
 
-    return { success: true, data: { postId } };
+    return ok({ postId });
   } catch (e) {
-    return { success: false, message: "删除帖子失败: " + e.message };
+    return fail("删除帖子失败: " + e.message);
   }
 };

@@ -4,6 +4,6 @@
   "description": "获取今日打卡统计",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "latest"
+    "@cloudbase/node-sdk": "latest"
   }
 }

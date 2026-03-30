@@ -18,6 +18,14 @@ struct AIReport: Codable, Identifiable {
         case id = "_id"
         case date, type, marketData, sentimentData, aiContent, model, createdAt
     }
+
+    /// 报告日期是否与今天一致（北京时间）
+    var isToday: Bool {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        return date == formatter.string(from: Date())
+    }
 }
 
 struct MarketDataSnapshot: Codable {
@@ -45,6 +53,13 @@ struct SentimentSnapshot: Codable {
     let yesCount: Int
     let noCount: Int
     let yesPercent: Int
+    let isSufficientSample: Bool?
+
+    /// 客户端兜底判断：样本量 ≥ 30 才认为情绪百分比有统计意义（统计学大样本标准）
+    static let minSampleSize = 30
+    var hasSufficientSample: Bool {
+        isSufficientSample ?? (totalCheckIns >= Self.minSampleSize)
+    }
 }
 
 struct AIContent: Codable {

@@ -85,7 +85,8 @@ struct HomeView: View {
                 // 第二段：AI 摘要卡片
                 AISummaryCardView(
                     summaryText: homeViewModel.aiSummaryText,
-                    isLoading: homeViewModel.isAISummaryLoading
+                    isLoading: homeViewModel.isAISummaryLoading,
+                    isReportToday: homeViewModel.isAIReportToday
                 )
                 .environmentObject(appState)
                 .padding(.horizontal, 16)

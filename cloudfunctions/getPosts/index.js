@@ -3,25 +3,20 @@
  * - sortBy: "latest"（默认，按时间倒序）或 "hot"（按热度倒序：likeCount + commentCount）
  * - 若传入 access_token，则同时返回当前用户已点赞的 postId 列表，用于客户端展示 isLiked
  */
-const cloud = require("@cloudbase/node-sdk");
-const { resolveUserId } = require("./shared-utils");
-
-const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
-const db = app.database();
-const auth = app.auth();
+const { db, _, resolveUserId, parseEvent, ok, fail } = require("./cloudbase-common");
 
 exports.main = async (event) => {
-  const limit = Math.min(Math.max(+(event?.limit ?? event?.body?.limit ?? 20), 1), 100);
-  const sortBy = event?.sortBy ?? event?.body?.sortBy ?? "latest";
+  const params = parseEvent(event);
+  const limit = Math.min(Math.max(+(params.limit ?? 20), 1), 100);
+  const sortBy = params.sortBy ?? "latest";
   // 游标分页：传入上一页最后一条记录的排序字段值
-  const cursor = event?.cursor ?? event?.body?.cursor ?? null;
+  const cursor = params.cursor ?? null;
   // 兼容旧版 offset 分页
-  const offset = Math.max(+(event?.offset ?? event?.body?.offset ?? 0), 0);
+  const offset = Math.max(+(params.offset ?? 0), 0);
 
-  const userId = resolveUserId(auth, event);
+  const userId = resolveUserId(event);
 
   try {
-    const _ = db.command;
     let query = db.collection("user_posts");
 
     if (sortBy === "hot") {
@@ -64,8 +59,8 @@ exports.main = async (event) => {
         : (typeof last.createdAt === "number" ? last.createdAt : null);
     }
 
-    return { success: true, data };
+    return ok(data);
   } catch (e) {
-    return { success: false, message: "获取帖子失败: " + e.message };
+    return fail("获取帖子失败: " + e.message);
   }
 };

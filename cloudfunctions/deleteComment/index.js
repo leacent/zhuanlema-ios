@@ -4,22 +4,18 @@
  * - 清理 comment_likes 记录
  * - 回写 user_posts.commentCount -1（不低于 0），更新 hotScore
  */
-const cloud = require("@cloudbase/node-sdk");
-const { resolveUserId, calcHotScore } = require("./shared-utils");
-
-const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
-const db = app.database();
-const auth = app.auth();
+const { db, _, resolveUserId, parseEvent, ok, fail, calcHotScore } = require('./cloudbase-common');
 
 exports.main = async (event) => {
-  const commentId = event?.commentId ?? event?.body?.commentId;
+  const params = parseEvent(event);
+  const commentId = params.commentId;
   if (!commentId || typeof commentId !== "string") {
-    return { success: false, message: "缺少 commentId" };
+    return fail("缺少 commentId");
   }
 
-  const userId = resolveUserId(auth, event);
+  const userId = resolveUserId(event);
   if (!userId) {
-    return { success: false, message: "未登录" };
+    return fail("未登录");
   }
 
   try {
@@ -27,15 +23,15 @@ exports.main = async (event) => {
     const commentRes = await commentRef.get();
     const raw = Array.isArray(commentRes.data) && commentRes.data.length > 0 ? commentRes.data[0] : commentRes.data;
     if (!raw || typeof raw !== "object") {
-      return { success: false, message: "评论不存在" };
+      return fail("评论不存在");
     }
 
     if (raw.userId !== userId) {
-      return { success: false, message: "无权限撤回该评论" };
+      return fail("无权限撤回该评论");
     }
 
     if (raw.isDeleted === true) {
-      return { success: true, data: { commentId, commentCount: null } };
+      return ok({ commentId, commentCount: null });
     }
 
     const postId = raw.postId;
@@ -47,13 +43,12 @@ exports.main = async (event) => {
     // 清理评论点赞记录
     try {
       await db.collection("comment_likes").where({ commentId }).remove();
-    } catch (_) {}
+    } catch (_e) {}
 
     // 回写帖子评论数（原子递减）
     let newCount = null;
     if (postId) {
       try {
-        const _ = db.command;
         const postRef = db.collection("user_posts").doc(postId);
         await postRef.update({ commentCount: _.max(_.inc(-1), 0) });
 
@@ -68,11 +63,11 @@ exports.main = async (event) => {
         const likeCount = (pRaw && typeof pRaw.likeCount === "number") ? pRaw.likeCount : 0;
         const createdAt = (pRaw && typeof pRaw.createdAt === "number") ? pRaw.createdAt : Date.now();
         await postRef.update({ hotScore: calcHotScore(likeCount, newCount, createdAt) });
-      } catch (_) {}
+      } catch (_e) {}
     }
 
-    return { success: true, data: { commentId, commentCount: newCount } };
+    return ok({ commentId, commentCount: newCount });
   } catch (e) {
-    return { success: false, message: "撤回失败: " + e.message };
+    return fail("撤回失败: " + e.message);
   }
 };

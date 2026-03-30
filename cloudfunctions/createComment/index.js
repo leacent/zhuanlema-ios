@@ -3,56 +3,52 @@
  * 写入 post_comments 并增加 user_posts.commentCount，更新 hotScore
  * 支持回复：传 parentId（父评论ID），云函数会写入 replyToNickname / replyToCommentId
  */
-const cloud = require("@cloudbase/node-sdk");
-const { resolveUserId, calcHotScore } = require("./shared-utils");
-
-const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
-const db = app.database();
-const auth = app.auth();
+const { db, _, resolveUserId, parseEvent, ok, fail, calcHotScore } = require('./cloudbase-common');
 
 /** 频率限制：同一用户 N 秒内不能重复评论 */
 const RATE_LIMIT_SECONDS = 5;
 const MAX_COMMENT_LENGTH = 500;
 
 exports.main = async (event) => {
-  const postId = event?.postId ?? event?.body?.postId;
-  const content = (event?.content ?? event?.body?.content ?? "").trim();
-  const parentId = event?.parentId ?? event?.body?.parentId;
+  const params = parseEvent(event);
+  const postId = params.postId;
+  const content = (params.content ?? "").trim();
+  const parentId = params.parentId;
 
   // === 参数校验 ===
   if (!postId || typeof postId !== "string") {
-    return { success: false, message: "缺少 postId" };
+    return fail("缺少 postId");
   }
   if (!content) {
-    return { success: false, message: "评论内容不能为空" };
+    return fail("评论内容不能为空");
   }
   if (content.length > MAX_COMMENT_LENGTH) {
-    return { success: false, message: `评论不能超过 ${MAX_COMMENT_LENGTH} 字` };
+    return fail(`评论不能超过 ${MAX_COMMENT_LENGTH} 字`);
   }
 
-  const userId = resolveUserId(auth, event);
+  const userId = resolveUserId(event);
   if (!userId) {
-    return { success: false, message: "未登录" };
+    return fail("未登录");
   }
 
   // === 频率限制 ===
   const cutoff = Date.now() - RATE_LIMIT_SECONDS * 1000;
   try {
     const recentRes = await db.collection("post_comments")
-      .where({ userId, createdAt: db.command.gt(cutoff) })
+      .where({ userId, createdAt: _.gt(cutoff) })
       .limit(1)
       .get();
     if (recentRes.data && recentRes.data.length > 0) {
-      return { success: false, message: `评论太频繁，请 ${RATE_LIMIT_SECONDS} 秒后再试` };
+      return fail(`评论太频繁，请 ${RATE_LIMIT_SECONDS} 秒后再试`);
     }
-  } catch (_) {}
+  } catch (_e) {}
 
   let nickname = "用户";
   try {
     const userRes = await db.collection("users").doc(userId).get();
     const raw = Array.isArray(userRes.data) && userRes.data.length > 0 ? userRes.data[0] : userRes.data;
     if (raw && raw.nickname) nickname = raw.nickname;
-  } catch (_) {}
+  } catch (_e) {}
 
   try {
     const commentDoc = {
@@ -86,7 +82,6 @@ exports.main = async (event) => {
 
     await db.collection("post_comments").add(commentDoc);
 
-    const _ = db.command;
     const postRef = db.collection("user_posts").doc(postId);
     await postRef.update({ commentCount: _.inc(1) });
 
@@ -98,8 +93,8 @@ exports.main = async (event) => {
     const createdAt = (raw && typeof raw.createdAt === "number") ? raw.createdAt : Date.now();
     await postRef.update({ hotScore: calcHotScore(likeCount, newCount, createdAt) });
 
-    return { success: true, data: { commentCount: newCount } };
+    return ok({ commentCount: newCount });
   } catch (e) {
-    return { success: false, message: "发表评论失败: " + e.message };
+    return fail("发表评论失败: " + e.message);
   }
 };

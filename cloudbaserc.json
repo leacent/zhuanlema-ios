@@ -118,18 +118,6 @@
       "handler": "index.main"
     },
     {
-      "name": "getSectorData",
-      "timeout": 20,
-      "runtime": "Nodejs18.15",
-      "handler": "index.main"
-    },
-    {
-      "name": "getHotStocks",
-      "timeout": 20,
-      "runtime": "Nodejs18.15",
-      "handler": "index.main"
-    },
-    {
       "name": "initAvatarPool",
       "timeout": 20,
       "runtime": "Nodejs18.15",
@@ -150,6 +138,24 @@
     {
       "name": "deletePost",
       "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "generateDailyReport",
+      "timeout": 120,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "getDailyReport",
+      "timeout": 20,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main"
+    },
+    {
+      "name": "aiChat",
+      "timeout": 120,
       "runtime": "Nodejs18.15",
       "handler": "index.main"
     }
@@ -210,6 +216,16 @@
         "name": "comment_likes",
         "aclTag": "PRIVATE",
         "description": "评论点赞记录（云函数读写）"
+      },
+      {
+        "name": "ai_reports",
+        "aclTag": "READONLY",
+        "description": "AI 每日复盘报告（云函数写入，客户端只读）"
+      },
+      {
+        "name": "ai_conversations",
+        "aclTag": "PRIVATE",
+        "description": "AI 对话历史（云函数读写）"
       }
     ]
   }

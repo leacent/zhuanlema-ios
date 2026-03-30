@@ -24,7 +24,7 @@ class CloudBaseDatabaseService {
      * @param date 日期 yyyy-MM-dd，nil 表示当天
      * @returns 打卡记录ID
      */
-    func createCheckIn(userId: String, result: String, date: String? = nil) async throws -> String {
+    func createCheckIn(userId: String, result: String, date: String? = nil, magnitude: String? = nil) async throws -> String {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let dateStr = date ?? dateFormatter.string(from: Date())
@@ -39,11 +39,14 @@ class CloudBaseDatabaseService {
             let message: String?
         }
 
-        let params: [String: Any] = [
+        var params: [String: Any] = [
             "userId": userId,
             "result": result,
             "date": dateStr
         ]
+        if let magnitude = magnitude {
+            params["magnitude"] = magnitude
+        }
         
         let apiResult: CreateCheckInResult = try await CloudBaseHTTPClient.call(name: "createCheckIn", body: params)
         
@@ -468,140 +471,68 @@ class CloudBaseDatabaseService {
         return (data.commentId, data.commentCount)
     }
 
-    // MARK: - 行情数据
-    
+    // MARK: - AI 复盘
+
     /**
-     * 获取板块数据（行业板块/概念板块）
-     * 通过云函数代理东方财富 API；仅 A 股有行业/概念板块，港股美股返回空
-     *
-     * @param type 板块类型
-     * @param region 市场区域
-     * @returns 板块数据列表
+     * 获取每日 AI 复盘报告
+     * @param date 日期 (YYYY-MM-DD)，nil 返回最近一篇
      */
-    func getSectorData(type: SectorType, region: MarketRegion) async throws -> [SectorItem] {
+    func getDailyReport(date: String? = nil) async throws -> AIReport {
         guard CloudBaseHTTPClient.hasPublishableKey else {
-            let msg = "请在 CloudBaseConfig 中配置 Publishable Key"
-            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
         }
-        
-        /// 云函数返回的板块数据结构（港股等可能返回 changePercent: null、leadingStockChange: "-"）
-        struct SectorAPIItem: Codable {
-            let code: String
-            let name: String
-            let changePercent: Double?
-            let leadingStock: String
-            let leadingStockChange: DoubleOrDash?
-            let volume: String?
-
-            enum CodingKeys: String, CodingKey {
-                case code, name, changePercent, leadingStock, volume
-                case leadingStockChange = "leadingStockChange"
-            }
-
-            init(from decoder: Decoder) throws {
-                let c = try decoder.container(keyedBy: CodingKeys.self)
-                code = try c.decode(String.self, forKey: .code)
-                name = try c.decode(String.self, forKey: .name)
-                changePercent = try c.decodeIfPresent(Double.self, forKey: .changePercent)
-                leadingStock = try c.decode(String.self, forKey: .leadingStock)
-                leadingStockChange = try c.decodeIfPresent(DoubleOrDash.self, forKey: .leadingStockChange)
-                volume = try c.decodeIfPresent(String.self, forKey: .volume)
-            }
-
-            func encode(to encoder: Encoder) throws {
-                var c = encoder.container(keyedBy: CodingKeys.self)
-                try c.encode(code, forKey: .code)
-                try c.encode(name, forKey: .name)
-                try c.encode(changePercent, forKey: .changePercent)
-                try c.encode(leadingStock, forKey: .leadingStock)
-                try c.encode(leadingStockChange, forKey: .leadingStockChange)
-                try c.encode(volume, forKey: .volume)
-            }
+        var body: [String: Any] = [:]
+        if let d = date { body["date"] = d }
+        let result: CloudFunctionResponse<AIReport> = try await CloudBaseHTTPClient.call(name: "getDailyReport", body: body)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "获取报告失败"])
         }
-
-        /// 云函数 leadingStockChange 可能为数字或 "-"
-        struct DoubleOrDash: Codable {
-            let value: Double?
-            init(from decoder: Decoder) throws {
-                let container = try decoder.singleValueContainer()
-                if let d = try? container.decode(Double.self) { value = d; return }
-                if let s = try? container.decode(String.self), s == "-" { value = nil; return }
-                value = nil
-            }
-            func encode(to encoder: Encoder) throws {
-                var c = encoder.singleValueContainer()
-                if let v = value { try c.encode(v) } else { try c.encode("-") }
-            }
-        }
-        
-        let body: [String: Any] = ["type": type.rawValue, "region": region.rawValue]
-        let result: CloudFunctionResponse<[SectorAPIItem]> = try await CloudBaseHTTPClient.call(name: "getSectorData", body: body)
-        
-        guard result.success, let items = result.data else {
-            let errorMsg = result.message ?? "获取板块数据失败"
-            print("❌ [CloudBaseDatabaseService] getSectorData 失败: \(errorMsg)")
-            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMsg])
-        }
-        
-        // 转换为 SectorItem（code -> id）；null changePercent 当作 0
-        let sectors = items.map { item in
-            SectorItem(
-                id: item.code,
-                name: item.name,
-                changePercent: item.changePercent ?? 0,
-                leadingStock: item.leadingStock,
-                leadingStockChange: item.leadingStockChange?.value,
-                volume: item.volume
-            )
-        }
-        
-        print("✅ [CloudBaseDatabaseService] getSectorData 成功，获取到 \(sectors.count) 个\(type.title)")
-        return sectors
+        return data
     }
-    
+
     /**
-     * 获取热门股票排行榜（涨幅榜/跌幅榜/活跃榜）
-     * 通过云函数代理东方财富 API，支持 A股/港股/美股 全量排行
-     *
-     * @param type 榜单类型
-     * @param region 市场区域
-     * @returns 股票列表，可与 WatchlistItem 直接使用
+     * AI 对话：发送消息并获取回复
+     * @param userId 用户 ID
+     * @param message 用户消息
+     * @param conversationId 对话 ID，nil 创建新对话
      */
-    func getHotStocks(type: HotStockType, region: MarketRegion) async throws -> [WatchlistItem] {
+    func sendAIChat(userId: String, message: String, conversationId: String?) async throws -> AIChatResponse {
         guard CloudBaseHTTPClient.hasPublishableKey else {
-            let msg = "请在 CloudBaseConfig 中配置 Publishable Key"
-            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: msg])
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
         }
-        
-        /// 云函数返回的排行榜项
-        struct HotStockAPIItem: Codable {
-            let code: String
-            let name: String
-            let price: Double?
-            let changePercent: Double?
-            let volume: Double?
+        var body: [String: Any] = ["userId": userId, "message": message]
+        if let convId = conversationId { body["conversationId"] = convId }
+        let result: CloudFunctionResponse<AIChatResponse> = try await CloudBaseHTTPClient.call(name: "aiChat", body: body)
+        guard result.success, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "AI 对话失败"])
         }
-        
-        let body: [String: Any] = ["type": type.rawValue, "region": region.rawValue]
-        let result: CloudFunctionResponse<[HotStockAPIItem]> = try await CloudBaseHTTPClient.call(name: "getHotStocks", body: body)
-        
-        guard result.success, let items = result.data else {
-            let errorMsg = result.message ?? "获取排行榜失败"
-            print("❌ [CloudBaseDatabaseService] getHotStocks 失败: \(errorMsg)")
-            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMsg])
-        }
-        
-        let list = items.map { item in
-            WatchlistItem(
-                id: item.code,
-                name: item.name,
-                code: item.code,
-                price: item.price,
-                changePercent: item.changePercent,
-                volume: item.volume.map { Int64($0) }
-            )
-        }
-        print("✅ [CloudBaseDatabaseService] getHotStocks 成功，\(type.tabTitle) \(list.count) 条")
-        return list
+        return data
     }
+
+    /**
+     * 手动触发生成每日报告（调试/补生成用）
+     */
+    func generateDailyReport(date: String? = nil, force: Bool = false) async throws -> AIReport {
+        guard CloudBaseHTTPClient.hasPublishableKey else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "请在 CloudBaseConfig 中配置 Publishable Key"])
+        }
+        struct GenerateResult: Codable {
+            let code: Int
+            let message: String?
+            let data: AIReport?
+        }
+        var body: [String: Any] = ["force": force]
+        if let d = date { body["date"] = d }
+        let result: GenerateResult = try await CloudBaseHTTPClient.call(name: "generateDailyReport", body: body)
+        guard result.code == 0, let data = result.data else {
+            throw NSError(domain: "CloudBaseDatabaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: result.message ?? "生成报告失败"])
+        }
+        return data
+    }
+}
+
+/// AI 对话云函数返回
+struct AIChatResponse: Codable {
+    let reply: String
+    let conversationId: String
 }

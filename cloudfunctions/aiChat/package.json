@@ -1,0 +1,9 @@
+{
+  "name": "aiChat",
+  "version": "1.0.0",
+  "description": "AI 追问对话：加载用户上下文 + DeepSeek 生成回复",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "getDailyReport",
+  "version": "1.0.0",
+  "description": "获取每日 AI 复盘报告",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0"
+  }
+}

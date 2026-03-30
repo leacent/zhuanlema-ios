@@ -14,22 +14,11 @@ struct ZhuanlemaApp: App {
     
     var body: some Scene {
         WindowGroup {
-            // 根据打卡状态显示不同页面
-            if appState.hasCheckedInToday {
-                // 已打卡，显示主界面
-                MainTabView()
-                    .environmentObject(appState)
-                    .onAppear {
-                        setupNotifications()
-                    }
-            } else {
-                // 未打卡，显示全屏打卡页面
-                DailyCheckInView()
-                    .environmentObject(appState)
-                    .onAppear {
-                        setupNotifications()
-                    }
-            }
+            MainTabView()
+                .environmentObject(appState)
+                .onAppear {
+                    setupNotifications()
+                }
         }
     }
     
@@ -53,7 +42,7 @@ struct ZhuanlemaApp: App {
 class AppState: ObservableObject {
     @Published var isLoggedIn: Bool = false
     @Published var hasCheckedInToday: Bool = false
-    /// 底部 Tab 选中索引（0=社区, 1=行情, 2=我的）
+    /// 底部 Tab 选中索引（0=首页, 1=AI 复盘, 2=我的）
     @Published var selectedMainTab: Int = 0
     
     private let userRepository = UserRepository()
